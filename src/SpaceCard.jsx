@@ -1,0 +1,190 @@
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { LOADER_META, LoaderMark, SpaceIcon, IconPlay, IconEdit, IconCopy, IconFolder, IconClock, IconShare, IconMore, IconWarn, AppIcon } from './icons.jsx'
+import { api, saveFileDialog } from './api.js'
+import { progressDetail } from './App.jsx'
+
+export function progressPercent(p) {
+  if (!p || !p.total || p.total === 0) return null
+  return Math.min(100, Math.round((p.done / p.total) * 100))
+}
+
+const BUSY_STAGES = ['loader', 'version', 'files', 'java', 'launching']
+
+export default function SpaceCard({ space, progress, onPlay, onEdit, onChanged, onDeleted, notify }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const meta = LOADER_META[space.loader] || LOADER_META.vanilla
+  const Mark = LoaderMark[space.loader] || LoaderMark.vanilla
+
+  const pct = progressPercent(progress)
+  const busy = progress && BUSY_STAGES.includes(progress.stage)
+  const running = progress && progress.stage === 'running'
+
+  useEffect(() => {
+    if (!confirmDelete) return undefined
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setConfirmDelete(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [confirmDelete])
+
+  const playLabel = running
+    ? 'Playing'
+    : busy
+      ? (progress.stage === 'files' && pct != null ? `${pct}%` : 'Getting ready…')
+      : 'Play'
+
+  const counts = { mod: 0, resourcepack: 0, shader: 0 }
+  for (const m of space.mods || []) counts[m.kind] = (counts[m.kind] || 0) + 1
+
+  const duplicate = async () => {
+    setMenuOpen(false)
+    try {
+      await api.duplicateSpace(space.id)
+      onChanged()
+      notify('Space duplicated')
+    } catch (e) {
+      notify(String(e), 'error')
+    }
+  }
+
+  const exportSpace = async () => {
+    setMenuOpen(false)
+    try {
+      const safeName = space.name.replace(/[^\w-]+/g, '_') || 'space'
+      const path = await saveFileDialog({
+        title: 'Export Space',
+        defaultPath: `${safeName}.orbitspace.json`,
+        filters: [{ name: 'Orbit Space', extensions: ['json'] }],
+      })
+      if (!path) return
+      await api.exportSpace(space.id, path)
+      notify('Space exported — share the file with a friend')
+    } catch (e) {
+      notify(String(e), 'error')
+    }
+  }
+
+  const openFolder = async () => {
+    setMenuOpen(false)
+    try { await api.openSpaceFolder(space.id) } catch (e) { notify(String(e), 'error') }
+  }
+
+  const doDelete = async () => {
+    setConfirmDelete(false)
+    try {
+      await api.deleteSpace(space.id, true)
+      onDeleted()
+      notify('Space deleted')
+    } catch (e) {
+      notify(String(e), 'error')
+    }
+  }
+
+  return (
+    <div className={`space-card ${running ? 'space-card-running' : ''}`} style={{ '--space-color': space.color }}>
+      <div className="space-card-glow" />
+      <div className="space-card-top">
+        <div className="space-icon" aria-hidden="true">
+          <SpaceIcon name={space.icon} size={30} />
+        </div>
+        <button
+          className="space-menu-btn"
+          title="Options"
+          onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o) }}
+          onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
+        >
+          <IconMore size={18} />
+        </button>
+        {menuOpen && (
+          <div className="space-menu" onMouseDown={(e) => e.preventDefault()}>
+            <button onClick={() => { setMenuOpen(false); onEdit(space) }}><IconEdit size={15} /> Edit</button>
+            <button onClick={duplicate}><IconCopy size={15} /> Duplicate</button>
+            <button onClick={exportSpace}><IconShare size={15} /> Export</button>
+            <button onClick={openFolder}><IconFolder size={15} /> Open folder</button>
+            <button className="danger" onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}><AppIcon name="trash" size={16} /> Delete</button>
+          </div>
+        )}
+      </div>
+
+      <div className="space-name">{space.name}</div>
+      <div className="space-tags">
+        <span className="tag tag-loader">
+          <Mark size={13} /> {meta.label}{space.loaderVersion ? ' ' + space.loaderVersion : ''}
+        </span>
+        <span className="tag">{space.mcVersion}</span>
+        {counts.mod > 0 && <span className="tag">{counts.mod} mod{counts.mod > 1 ? 's' : ''}</span>}
+        {counts.resourcepack > 0 && <span className="tag">{counts.resourcepack} pack{counts.resourcepack > 1 ? 's' : ''}</span>}
+        {counts.shader > 0 && <span className="tag">{counts.shader} shader{counts.shader > 1 ? 's' : ''}</span>}
+        {space.lastPlayed > 0 && <span className="tag tag-muted"><IconClock size={11} /> {timeAgo(space.lastPlayed)}</span>}
+      </div>
+
+      <button
+        className={`play-btn ${running ? 'play-btn-running' : ''}`}
+        disabled={busy && !running}
+        onClick={onPlay}
+      >
+        {busy && !running ? (
+          <>
+            <span className="play-spinner" />
+            <span>{playLabel}</span>
+          </>
+        ) : (
+          <>
+            <IconPlay size={17} />
+            <span>{playLabel}</span>
+          </>
+        )}
+      </button>
+
+      {busy && (
+        <div className="space-progress">
+          <div className="space-progress-bar" style={{ width: pct != null ? `${pct}%` : '35%' }} data-ind={pct == null ? '1' : '0'} />
+        </div>
+      )}
+      {busy && progress.message && (
+        <div className="space-stage">
+          <span className="space-stage-text">{friendlyStage(progress)}</span>
+          {progress.stage === 'files' && pct != null && <span className="space-stage-pct">{pct}%</span>}
+        </div>
+      )}
+
+      {confirmDelete && createPortal(
+        <div className="confirm-pop" onClick={() => setConfirmDelete(false)}>
+          <div className="confirm-card" role="dialog" aria-modal="true" aria-label={`Delete ${space.name}`} onClick={(e) => e.stopPropagation()}>
+            <div className="confirm-icon warn"><IconWarn size={28} /></div>
+            <div className="confirm-title">Delete “{space.name}”?</div>
+            <div className="confirm-text">Worlds, mods and settings inside this Space will be gone forever.</div>
+            <div className="confirm-actions">
+              <button className="btn" autoFocus onClick={() => setConfirmDelete(false)}>Keep it</button>
+              <button className="btn btn-danger" onClick={doDelete}>Delete</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  )
+}
+
+function friendlyStage(p) {
+  if (p.stage === 'files' && p.total > 0) return progressDetail(p)
+  switch (p.stage) {
+    case 'loader': return p.message?.startsWith('Installing') ? p.message.slice(0, 60) : 'Setting up the game…'
+    case 'java': return 'Getting Java ready…'
+    case 'launching': return 'Launching Minecraft…'
+    case 'version': return 'Reading version info…'
+    default: return p.message || 'Working…'
+  }
+}
+
+export function timeAgo(ts) {
+  const diff = Date.now() / 1000 - ts
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago'
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago'
+  if (diff < 86400 * 30) return Math.floor(diff / 86400) + 'd ago'
+  return new Date(ts * 1000).toLocaleDateString()
+}

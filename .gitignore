@@ -1,0 +1,16 @@
+/node_modules/
+/dist/
+/release/
+*.local
+
+# Rust target dir (huge)
+/src-tauri/target/
+/src-tauri/gen/
+/src-tauri/secrets.env
+
+# raw source media (already bundled into public/ where needed)
+/imgs/
+/musics/
+
+# internal working notes
+/prompt.txt
