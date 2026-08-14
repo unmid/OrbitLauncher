@@ -1,0 +1,58 @@
+{
+  "servers": [
+    {
+      "name": "Hypixel",
+      "ip": "play.hypixel.net",
+      "port": 25565,
+      "icon": "",
+      "motd": "The biggest minigame network on the planet",
+      "category": "Minigames",
+      "sponsored": true
+    },
+    {
+      "name": "Donut SMP",
+      "ip": "donutsmp.net",
+      "port": 25565,
+      "icon": "",
+      "motd": "Survival SMP",
+      "category": "SMP",
+      "sponsored": true
+    },
+    {
+      "name": "Wynncraft",
+      "ip": "play.wynncraft.com",
+      "port": 25565,
+      "icon": "",
+      "motd": "A full free-to-play MMORPG inside Minecraft",
+      "category": "MMORPG",
+      "sponsored": false
+    },
+    {
+      "name": "2b2t",
+      "ip": "2b2t.org",
+      "port": 25565,
+      "icon": "",
+      "motd": "The oldest anarchy server in Minecraft",
+      "category": "Anarchy",
+      "sponsored": false
+    },
+    {
+      "name": "Minewind",
+      "ip": "server.minewind.com",
+      "port": 25565,
+      "icon": "",
+      "motd": "Vanilla anarchy with a twist of chaos",
+      "category": "Anarchy",
+      "sponsored": false
+    },
+    {
+      "name": "Purple Prison",
+      "ip": "purpleprison.net",
+      "port": 25565,
+      "icon": "",
+      "motd": "Prison, parkour and PvP events daily",
+      "category": "Prison",
+      "sponsored": false
+    }
+  ]
+}

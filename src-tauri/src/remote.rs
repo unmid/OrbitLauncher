@@ -1,7 +1,9 @@
-//! Remote config/content from the private OL-updater GitHub repo.
-//! The token is baked in at build time from secrets.env (never committed).
+//! Remote config/content from the OL-updater GitHub repo (public).
+//! A token improves rate limits but is NOT required — fetching works with the
+//! public API alone, so revoked/expired tokens can never freeze the content.
 
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const UPDATER_TOKEN: &str = match option_env!("ORBIT_UPDATER_TOKEN") {
     Some(t) => t,
@@ -13,53 +15,79 @@ pub const CF_KEY: &str = match option_env!("ORBIT_CF_KEY") {
 };
 
 pub const REPO_BASE: &str = "https://api.github.com/repos/unmid/OL-updater/contents";
+pub const RAW_BASE: &str = "https://raw.githubusercontent.com/unmid/OL-updater/main";
 pub const RELEASES_REPO: &str = "unmid/Orbit-Launcher";
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 fn cache_path(root: &PathBuf, name: &str) -> PathBuf {
     root.join("cache").join("remote").join(name)
 }
 
-/// Fetch a file from the updater repo (Contents API). Falls back to the last
-/// cached copy when the network/token fails. Returns None only if nothing was
-/// ever cached.
+async fn try_get(http: &reqwest::Client, url: &str, token: bool) -> Result<String, String> {
+    let mut req = http
+        .get(url)
+        .header("Accept", "application/vnd.github.raw+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", "Orbit-Launcher");
+    if token && !UPDATER_TOKEN.is_empty() {
+        req = req.header("Authorization", format!("Bearer {UPDATER_TOKEN}"));
+    }
+    let bytes = req
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&bytes).to_string())
+}
+
+/// Fetch a file from the updater repo. Tries, in order:
+///   1. the GitHub Contents API with the baked-in token (if present),
+///   2. the same API unauthenticated (the repo is public),
+///   3. raw.githubusercontent.com with a cache-busting query,
+///   4. the last disk cache (offline).
+/// Every successful network fetch refreshes the disk cache, so the live
+/// content always wins and the cache can never hide newer updates.
 pub async fn fetch_updater_file(
     http: &reqwest::Client,
     root: &PathBuf,
     file: &str,
 ) -> Option<String> {
     let cache = cache_path(root, &file.replace('/', "_"));
+    let api_url = format!("{REPO_BASE}/{file}");
+    let raw_url = format!("{RAW_BASE}/{file}?cb={}", now_ms());
 
-    let result: Result<String, String> = async {
-        if UPDATER_TOKEN.is_empty() {
-            return Err("no updater token".into());
-        }
-        let url = format!("{REPO_BASE}/{file}");
-        let bytes = http
-            .get(&url)
-            .header("Authorization", format!("Bearer {UPDATER_TOKEN}"))
-            .header("Accept", "application/vnd.github.raw+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .error_for_status()
-            .map_err(|e| e.to_string())?
-            .bytes()
-            .await
-            .map_err(|e| e.to_string())?;
-        Ok(String::from_utf8_lossy(&bytes).to_string())
+    let mut result: Option<String> = None;
+    if !UPDATER_TOKEN.is_empty() {
+        result = try_get(http, &api_url, true).await.ok();
     }
-    .await;
+    if result.is_none() {
+        result = try_get(http, &api_url, false).await.ok();
+    }
+    if result.is_none() {
+        result = try_get(http, &raw_url, false).await.ok();
+    }
 
     match result {
-        Ok(text) => {
+        Some(text) => {
             if let Some(parent) = cache.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            let _ = std::fs::write(&cache, &text);
+            let Ok(_) = std::fs::write(&cache, &text) else {
+                return Some(text);
+            };
             Some(text)
         }
-        Err(_) => std::fs::read_to_string(&cache).ok(),
+        None => std::fs::read_to_string(&cache).ok(),
     }
 }
 

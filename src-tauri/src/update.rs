@@ -45,12 +45,20 @@ pub fn is_newer(current: &str, latest: &str) -> bool {
 }
 
 pub async fn check(http: &reqwest::Client, current: &str) -> Result<UpdateInfo, String> {
-    let v: Value = http
+    let mut req = http
         .get(format!(
             "https://api.github.com/repos/{RELEASES_REPO}/releases/latest"
         ))
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", "Orbit-Launcher");
+    if !crate::remote::UPDATER_TOKEN.is_empty() {
+        req = req.header(
+            "Authorization",
+            format!("Bearer {}", crate::remote::UPDATER_TOKEN),
+        );
+    }
+    let v: Value = req
         .send()
         .await
         .map_err(|e| format!("Can't reach GitHub: {e}"))?

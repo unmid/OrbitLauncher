@@ -132,8 +132,47 @@ Use `--run` only when you intentionally want the self-test to open Minecraft.
 
 ## Releases
 
+- **Orbit Launcher v3.0.0** — UI polish and bug fixes: the Home hero is now
+  cache-busted, so the embedded page always shows the latest published content
+  (no more stale iframes that look like "cookies"); the server list and remote
+  content refresh live with a resilient fetch chain (token → public API → raw
+  CDN → disk cache) that works even with an expired token; update checks are
+  authenticated for reliable release detection; and the Home hero can hand the
+  latest release download straight to the in-app updater.
 - **Orbit Launcher Beta v2** — new minimal create-Space wizard, cleaner Space
   cards, rebuilt mod preview window, and responsive layout for all window sizes.
+
+## Remote content (web/ folder)
+
+Orbit ships with **no bundled news/server data** — everything remote comes from
+the public **unmid/OL-updater** repo (served on GitHub Pages):
+
+| File | Purpose | Where it shows up |
+| --- | --- | --- |
+| `web/ol.html` | Home-page hero (slider + latest-release slide) | Home tab (embedded iframe) |
+| `web/olserverlist.json` | Server browser list | Servers tab |
+
+Publishing an edit takes one push:
+
+```bat
+git clone https://github.com/unmid/OL-updater.git
+copy /Y web\ol.html web\olserverlist.json <clone>\
+cd <clone>
+git add -A
+git commit -m "update home page / server list"
+git push
+```
+
+The launcher fetches these through the GitHub Contents API (no CDN staleness),
+falls back to `raw.githubusercontent.com` with cache-busting, and only then to a
+local disk copy — so edited content appears without reinstalling the app. The
+iframes on the Home tab append a fresh `?v=` timestamp on every visit, so the
+webview never replays a cached page either.
+
+> The old baked-in updater token was expired, which silently froze the server
+> list and home page on their disk caches. v3.0.0 no longer *requires* a token:
+> the repos are public, so fetching works unauthenticated (a token in
+> `src-tauri/secrets.env` still raises rate limits).
 
 ## License
 

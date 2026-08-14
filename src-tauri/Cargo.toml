@@ -1,6 +1,6 @@
 [package]
 name = "orbit-launcher"
-version = "0.1.0-beta"
+version = "3.0.0"
 description = "Orbit Launcher - fast, simple Minecraft launcher"
 edition = "2021"
 rust-version = "1.77.2"

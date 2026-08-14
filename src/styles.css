@@ -458,6 +458,25 @@ input[type='range']::-webkit-slider-thumb, .ram-slider::-webkit-slider-thumb {
   opacity: 0; transition: opacity .9s ease;
 }
 .hero-slide.on { opacity: 1; animation: kenburns 26s ease-in-out infinite alternate; }
+.hero-update-overlay {
+  position: absolute; inset: 0; z-index: 4;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--paper2) 62%, transparent);
+  backdrop-filter: blur(3px);
+}
+.hero-update-card {
+  display: flex; flex-direction: column; gap: 10px;
+  width: min(480px, calc(100% - 48px));
+  padding: 20px 22px;
+  background: var(--card); border: 2.5px solid var(--line);
+  border-radius: 12px; box-shadow: 4px 5px 0 var(--shadow);
+}
+.hero-update-title {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--font-pixel); font-size: 12px; color: var(--text);
+}
+.hero-update-sub { font-size: 13px; color: var(--muted); line-height: 1.45; }
+.hero-update-card .update-bar { height: 12px; }
 .hero-nav {
   position: absolute; top: 50%; transform: translateY(-50%); z-index: 3;
   width: 36px; height: 36px; display: grid; place-items: center;
