@@ -67,6 +67,7 @@ export default function ModsBrowser({ mcVersion, loader, spacesModList = [], onP
   const [sort, setSort] = useState('relevance')
   const [results, setResults] = useState([])
   const [total, setTotal] = useState(0)
+  const [relaxed, setRelaxed] = useState(false)
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(false)
   const [busyId, setBusyId] = useState(null)
@@ -112,9 +113,22 @@ export default function ModsBrowser({ mcVersion, loader, spacesModList = [], onP
     setLoading(true)
     try {
       const res = await api.searchContent({ source: src, kind: k, query: q, mcVersion: searchVersion, loader, sort: s, offset: off })
-      if (off === 0) setResults(res.hits || [])
-      else setResults((current) => [...current, ...(res.hits || [])])
-      setTotal(res.total || 0)
+      let hits = res.hits || []
+      let totalHits = res.total || 0
+      // Snapshots and pre-releases are rarely tagged by authors, so a strict
+      // version filter often finds nothing. Retry once with all versions and
+      // keep the unsupported rows marked (install stays blocked for them).
+      if (off === 0 && totalHits === 0 && searchVersion) {
+        const retry = await api.searchContent({ source: src, kind: k, query: q, mcVersion: '', loader, sort: s, offset: 0 })
+        hits = retry.hits || []
+        totalHits = retry.total || 0
+        setRelaxed(true)
+      } else if (off === 0) {
+        setRelaxed(false)
+      }
+      if (off === 0) setResults(hits)
+      else setResults((current) => [...current, ...hits])
+      setTotal(totalHits)
       setOffset(off)
     } catch (e) {
       notify?.(String(e), 'error')
@@ -214,6 +228,9 @@ export default function ModsBrowser({ mcVersion, loader, spacesModList = [], onP
             <Dropdown className="dd-inline" value={sort} onChange={setSort} options={[{ value: 'relevance', label: 'Best match' }, { value: 'downloads', label: 'Most popular' }, { value: 'newest', label: 'Newest' }]} />
           </div>
 
+          {relaxed && results.length > 0 && (
+            <div className="mods-note">Nothing is tagged for Minecraft {targetVersion} yet — showing all versions. Rows marked unsupported can't be installed.</div>
+          )}
           <div className="mods-list">
             {results.map((hit) => {
               const record = installedRecord(activeMods, source, hit.projectId)

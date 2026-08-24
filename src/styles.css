@@ -1,7 +1,7 @@
-/* ============================================================================
+﻿/* ============================================================================
    Orbit Launcher (beta) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â "Paper Edition" UI
    Sticker-book / paper-craft styling: thick ink borders, hard sticker shadows,
-   Baloo 2 type, doodle icons, playful physics (bob, wig, pop, page-in).
+   Baloo 2 type, doodle icons, playful physics (wig, pop, page-in).
    Themes: body[data-theme='light'] (paper default) | 'dark' (midnight craft).
    ========================================================================= */
 
@@ -90,7 +90,7 @@ button { font-family: inherit; }
 @keyframes pagein { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes pop { from { transform: scale(.92) rotate(-1deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes wig { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
-@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes wig { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
 @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
 @keyframes rot { to { transform: rotate(360deg); } }
 @keyframes stripe { to { background-position: 28px 0; } }
@@ -116,10 +116,11 @@ button { font-family: inherit; }
   display: flex; align-items: center; gap: 10px; padding: 4px 6px 12px; cursor: pointer;
 }
 .brand-badge {
-  width: 38px; height: 38px; flex: none; background: var(--accent); color: var(--accent-ink);
+  width: 38px; height: 38px; flex: none; background: var(--card); color: var(--accent-ink);
   border: 2.5px solid var(--line); border-radius: 11px; display: grid; place-items: center;
-  box-shadow: 3px 3px 0 var(--shadow); animation: bob 3s ease-in-out infinite;
+  box-shadow: 3px 3px 0 var(--shadow);
 }
+.brand-badge img { border-radius: 8px; }
 .brand-word { font-size: 21px; font-weight: 800; letter-spacing: 1px; }
 
 .sidenav-nav { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; overflow-x: hidden; flex: 1; padding-right: 2px; }
@@ -343,8 +344,8 @@ input[type='range']::-webkit-slider-thumb, .ram-slider::-webkit-slider-thumb {
   background: var(--paper2); box-shadow: 2px 2px 0 var(--shadow);
   overflow: hidden; transform: rotate(-1deg); transition: .15s;
 }
-.cape-preview-frame img {
-  width: 88%; height: 88%; object-fit: contain; image-rendering: auto;
+.cape-preview-frame img, .cape-preview-frame .cape-canvas {
+  height: 96%; width: auto; max-width: 92%; object-fit: contain; image-rendering: pixelated;
 }
 .cape-card:hover .cape-preview-frame { transform: rotate(1deg) scale(1.05); }
 .app-icon { display: inline-block; object-fit: contain; image-rendering: auto; }
@@ -499,24 +500,21 @@ input[type='range']::-webkit-slider-thumb, .ram-slider::-webkit-slider-thumb {
 }
 .hero-dot.on { background: var(--accent); transform: scale(1.2); }
 
-.home-lower { display: flex; gap: 12px; align-items: stretch; margin: 16px 0; flex-wrap: wrap; }
-.link-card {
-  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
-  border: 2.5px solid var(--line); border-radius: 14px; background: var(--card);
-  box-shadow: 4px 5px 0 var(--shadow); cursor: pointer; text-align: left; color: var(--text);
-  font-weight: 700; transition: .15s; min-width: 240px;
+.home-quick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 4px; }
+.quick-link {
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 15px;
+  border: 2.5px solid var(--line); border-radius: 999px; background: var(--card);
+  color: var(--text); font: inherit; font-weight: 700; font-size: 13px; cursor: pointer;
+  box-shadow: 3px 3px 0 var(--shadow); transition: .15s; white-space: nowrap;
 }
-.link-card:hover { transform: translateY(-3px) rotate(-.5deg); box-shadow: 5px 7px 0 var(--shadow); border-color: var(--accent); }
-.link-card svg { animation: bob 2.6s ease-in-out infinite; }
-.link-card-title { font-size: 15px; font-weight: 800; }
-.link-card-sub { color: var(--muted); font-weight: 600; font-size: 12px; }
-.link-card-discord { border-color: var(--blue); }
-.secure-note {
-  flex: 1; min-width: 260px; display: flex; align-items: center; gap: 10px;
-  color: var(--muted); font-weight: 600; font-size: 12.5px; padding: 10px 12px;
-  border: 2.5px dashed var(--line); border-radius: 14px; line-height: 1.4;
+.quick-link:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--shadow); border-color: var(--accent); }
+.quick-link:active { transform: translate(1px,1px); box-shadow: 0 0 0 var(--shadow); }
+.quick-link img, .quick-link svg { flex: none; }
+.home-privacy {
+  display: inline-flex; align-items: center; gap: 7px; margin-left: auto;
+  color: var(--muted); font-weight: 600; font-size: 12.5px;
 }
-.secure-note svg { flex: none; }
+.home-privacy svg { flex: none; }
 
 /* launch bar (bottom of home) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â every control is exactly the same height */
 .bottombar {
@@ -716,6 +714,14 @@ body[data-theme='dark'] .server-ping.ok { color: var(--yellow); }
 .server-row-skeleton:hover { transform: none; border-color: var(--line); }
 .server-row-skeleton .server-icon { width: 52px; height: 52px; }
 
+.offline-note {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; margin-bottom: 12px;
+  border: 2px dashed var(--line); border-radius: 12px;
+  color: var(--muted); font-weight: 600; font-size: 12.5px; line-height: 1.4;
+}
+.offline-note svg { flex: none; }
+
 .sheet-space-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 320px; overflow-y: auto; padding-right: 4px; }
 .sheet-space-row {
   display: flex; align-items: center; gap: 11px; padding: 9px 10px;
@@ -878,7 +884,7 @@ body[data-theme='dark'] .news-meta { color: var(--yellow); }
 .update-good-icon {
   width: 54px; height: 54px; flex: none; display: grid; place-items: center;
   border: 2.5px solid var(--line); border-radius: 14px; background: var(--green); color: #fff;
-  box-shadow: 3px 3px 0 var(--shadow); animation: bob 3s ease-in-out infinite;
+  box-shadow: 3px 3px 0 var(--shadow);
 }
 
 /* =================================================================================
@@ -1084,6 +1090,11 @@ body[data-theme='dark'] .news-meta { color: var(--yellow); }
 .installed-version { color: var(--good); font-weight: 800; }
 .mods-loading { display: flex; align-items: center; gap: 9px; color: var(--muted); font-weight: 700; padding: 14px; justify-content: center; }
 .mods-more { align-self: center; }
+.mods-note {
+  padding: 8px 12px; margin-bottom: 8px;
+  border: 2px dashed var(--line); border-radius: 10px;
+  color: var(--muted); font-weight: 600; font-size: 12.5px; line-height: 1.4;
+}
 
 /* Version-aware content controls and description reader. */
 .version-filter { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 800; }
@@ -1156,9 +1167,9 @@ body[data-theme='dark'] .news-meta { color: var(--yellow); }
    ================================================================================= */
 .splash {
   position: fixed; inset: 0; z-index: 1200; background: #000;
-  transition: transform .45s ease, opacity .45s ease;
+  transition: opacity .6s ease;
 }
-.splash-leave { transform: translateY(-4%) scale(.98); opacity: 0; pointer-events: none; }
+.splash-leave { opacity: 0; pointer-events: none; }
 .splash-video {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover; background: #000; transition: opacity 1s ease;
@@ -1218,6 +1229,11 @@ body[data-theme='dark'] .news-meta { color: var(--yellow); }
   .details-head { padding: 14px; }
   .details-meta, .details-body { padding-left: 14px; padding-right: 14px; }
   .details-foot { padding: 12px 14px; }
+  .home-privacy { margin-left: 0; flex-basis: 100%; }
+}
+@media (max-height: 620px) {
+  .hero { min-height: 260px; }
+  .home-quick { margin: 10px 0 2px; }
 }
 @media (max-width: 700px) {
   .bottombar { flex-wrap: wrap; }

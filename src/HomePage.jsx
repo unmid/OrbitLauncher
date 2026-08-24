@@ -140,32 +140,23 @@ export default function HomePage({ notify }) {
         </div>
       </section>
 
-      <section className="home-lower">
-        <button className="link-card link-card-discord" onClick={() => api.openUrl(DISCORD_URL)}>
-          <img src="./icons/loader/discord.png" width="30" height="30" alt="" draggable={false} />
-          <div>
-            <div className="link-card-title">Discord</div>
-            <div className="link-card-sub">Community, support and sneak peeks</div>
-          </div>
+      <section className="home-quick">
+        <button className="quick-link" onClick={() => api.openUrl(DISCORD_URL)} title="Community, support and sneak peeks">
+          <img src="./icons/loader/discord.png" width="20" height="20" alt="" draggable={false} />
+          <span>Discord</span>
         </button>
-        <button className="link-card" onClick={() => api.openUrl(RELEASENOTES_URL)}>
-          <IconNews size={26} />
-          <div>
-            <div className="link-card-title">Changelog</div>
-            <div className="link-card-sub">What's new in Orbit Launcher (beta)</div>
-          </div>
+        <button className="quick-link" onClick={() => api.openUrl(RELEASENOTES_URL)} title="What's new in Orbit Launcher">
+          <IconNews size={17} />
+          <span>Changelog</span>
         </button>
-        <button className="link-card" onClick={() => api.openUrl('https://www.minecraft.net')}>
-          <IconGlobe size={26} />
-          <div>
-            <div className="link-card-title">Minecraft.net</div>
-            <div className="link-card-sub">Official site, marketplace &amp; realms</div>
-          </div>
+        <button className="quick-link" onClick={() => api.openUrl('https://www.minecraft.net')} title="Official site, marketplace &amp; realms">
+          <IconGlobe size={17} />
+          <span>Minecraft.net</span>
         </button>
-        <div className="secure-note">
-          <IconShield size={16} />
-          <span>Everything is stored locally on your PC — accounts, worlds and settings never leave this machine except official Microsoft sign-in.</span>
-        </div>
+        <span className="home-privacy">
+          <IconShield size={14} />
+          Everything stays on this PC
+        </span>
       </section>
     </div>
   )

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 
 /**
  * Loading screen: plays the intro video with sound ON.
- * The last 1 second of the video fades the picture out (the sound keeps playing)
- * and then we slide into the launcher.
+ * The last second of the video gently fades the picture out (sound keeps
+ * playing) and then the whole splash fades out — no slide, just a clean fade.
  */
 export default function Splash({ onDone }) {
   const videoRef = useRef(null)
@@ -31,7 +31,7 @@ export default function Splash({ onDone }) {
     if (doneRef.current) return
     doneRef.current = true
     setLeaving(true)
-    setTimeout(onDone, 450) // let the slide-out animation play
+    setTimeout(onDone, 620) // let the fade-out animation finish
   }
 
   const onTimeUpdate = () => {

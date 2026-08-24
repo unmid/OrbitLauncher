@@ -34,7 +34,21 @@ const PAGES = [
   { id: 'logs', label: 'Log', icon: NAV_ICON('process') },
 ]
 
-const MUSIC_FILES = ['Soft Reset.mp3']
+// Music tracks are discovered automatically: vite.config.js scans
+// public/musics and writes musics-manifest.json (dev + every build), so any
+// audio file dropped in the folder is picked up. Fallback keeps web previews
+// working if the manifest is missing.
+const FALLBACK_MUSIC = ['Soft Reset.mp3']
+async function loadMusicList() {
+  try {
+    const r = await fetch('./musics-manifest.json')
+    if (r.ok) {
+      const data = await r.json()
+      if (Array.isArray(data.files) && data.files.length) return data.files
+    }
+  } catch {}
+  return FALLBACK_MUSIC
+}
 const BROWSER_SETTINGS = {
   ramGb: 4, showSnapshots: false, skipIntro: true, closeOnPlay: true,
   extraJvmArgs: '', activeAccountId: null, theme: 'dark', accent: '#f26a3c',
@@ -75,6 +89,7 @@ export default function App() {
   const [toasts, setToasts] = useState([])
   const toastId = useRef(0)
   const musicRef = useRef(null)
+  const musicListRef = useRef(FALLBACK_MUSIC)
   const speedRef = useRef({})
 
   const notify = useCallback((message, kind = 'ok') => {
@@ -114,6 +129,7 @@ export default function App() {
         const s = await api.getSettings()
         setSettings(s)
         setShowSplash(!s.skipIntro)
+        loadMusicList().then((list) => { musicListRef.current = list }).catch(() => {})
         await Promise.all([refreshSpaces(), refreshAccounts()])
       } catch (e) {
         // The Vite preview has no Tauri bridge. Keep it useful for visual QA
@@ -179,7 +195,8 @@ export default function App() {
 
   function startMusic() {
     if (musicRef.current) return
-    const file = MUSIC_FILES[Math.floor(Math.random() * MUSIC_FILES.length)]
+    const list = musicListRef.current?.length ? musicListRef.current : FALLBACK_MUSIC
+    const file = list[Math.floor(Math.random() * list.length)]
     const audio = new Audio(`./musics/${encodeURIComponent(file)}`)
     audio.loop = true
     audio.volume = 0

@@ -2163,7 +2163,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orbit-launcher"
-version = "2.1.0"
+version = "3.0.0"
 dependencies = [
  "dirs",
  "futures-util",

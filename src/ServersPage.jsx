@@ -4,10 +4,19 @@ import { IconPlayers, IconSignal, IconServer, IconRefresh, IconCopy, IconCheck, 
 
 const pingKey = (s) => `${s.ip}:${s.port || 25565}`
 const serverAddress = (s) => s.ip + ((s.port && s.port !== 25565) ? `:${s.port}` : '')
+const SERVERS_CACHE_KEY = 'orbit.servers.v1'
+
+function readCache() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SERVERS_CACHE_KEY) || '[]')
+    return Array.isArray(raw) ? raw : []
+  } catch { return [] }
+}
 
 export default function ServersPage({ notify }) {
   const [servers, setServers] = useState(null) // null = loading
   const [pings, setPings] = useState({})
+  const [offline, setOffline] = useState(false)
   const [copied, setCopied] = useState(null) // pingKey of the row just copied
 
   const pingAll = useCallback((list) => {
@@ -21,15 +30,29 @@ export default function ServersPage({ notify }) {
   const load = useCallback(async () => {
     setServers(null)
     setPings({})
+    let list = null
     try {
-      const list = await api.getServerList()
-      setServers(list || [])
-      if (list?.length) pingAll(list)
-    } catch (e) {
-      setServers([])
-      notify(String(e), 'error')
+      list = await api.getServerList()
+    } catch { list = null }
+    const cached = readCache()
+    if (!navigator.onLine) {
+      // Offline: show the last saved copy so the page stays useful offline.
+      setOffline(true)
+      setServers(cached)
+      return
     }
-  }, [pingAll, notify])
+    setOffline(false)
+    setServers(list || [])
+    if (list?.length) {
+      pingAll(list)
+      try { localStorage.setItem(SERVERS_CACHE_KEY, JSON.stringify(list)) } catch {}
+    } else if (cached.length) {
+      // The fetch failed silently (Tauri returns [] on network errors) —
+      // fall back to the saved list instead of an empty page.
+      setServers(cached)
+      setOffline(true)
+    }
+  }, [pingAll])
 
   useEffect(() => { load() }, [load])
 
@@ -106,11 +129,18 @@ export default function ServersPage({ notify }) {
         </div>
       )}
 
+      {servers !== null && offline && servers.length > 0 && (
+        <div className="offline-note">
+          <IconSignal size={14} />
+          You're offline — showing your saved servers. Copying addresses still works; live pings are paused.
+        </div>
+      )}
+
       {servers !== null && servers.length === 0 && (
         <div className="mods-empty">
           <div className="mods-empty-icon"><IconServer size={34} /></div>
-          <div>No servers right now</div>
-          <div className="mods-empty-sub">The list lives online — check your connection and hit Refresh.</div>
+          <div>{offline ? "You're offline and there's no saved server list yet" : 'No servers right now'}</div>
+          <div className="mods-empty-sub">{offline ? 'Connect to the internet once — the list is then saved on this PC for offline use.' : 'The list lives online — check your connection and hit Refresh.'}</div>
         </div>
       )}
 
@@ -135,7 +165,9 @@ export default function ServersPage({ notify }) {
                     {motd && <div className="server-motd">{motd}</div>}
                     <div className="server-meta">
                       <span className="server-ip">{serverAddress(s)}</span>
-                      {ping ? (
+                      {offline ? (
+                        <span className="server-ping off"><IconSignal size={12} /> offline</span>
+                      ) : ping ? (
                         ping.online ? (
                           <>
                             <span className="server-players"><IconPlayers size={12} /> {ping.playersOnline}/{ping.playersMax}</span>

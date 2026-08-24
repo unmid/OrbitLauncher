@@ -4,15 +4,35 @@ import { api, openFileDialog, avatarUrl } from './api.js'
 import { IconUser, IconCape, IconRefresh, IconMicrosoft, AppIcon } from './icons.jsx'
 
 /**
- * Renders the REAL cape look: crops the "outside of the cape" region
- * (x 12..22, y 1..17 in a 64x32 texture — same UV the game uses) and draws
- * it pixel-for-pixel, so the card shows the cape as seen in game, not the
- * raw flat texture.
+ * Renders the cape FRONT side only, cropped straight from the real texture
+ * (the 10x16 "outside" face at x1..11, y0..16 in the 64x32 cape layout —
+ * works for any texture resolution). The back side and the elytra half of
+ * the atlas are never shown, so every card looks like one clean cape front.
  */
 function CapePreview({ url }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas || !url) return
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const sx = img.naturalWidth / 64
+      const sy = img.naturalHeight / 32
+      const S = 8
+      canvas.width = 10 * S
+      canvas.height = 16 * S
+      const ctx = canvas.getContext('2d')
+      ctx.imageSmoothingEnabled = false
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 1 * sx, 0, 10 * sx, 16 * sy, 0, 0, 10 * S, 16 * S)
+    }
+    img.src = url
+    return () => { img.onload = null }
+  }, [url])
   return (
     <span className="cape-preview-frame">
-      <img src={url} alt="Minecraft cape" draggable={false} loading="lazy" />
+      <canvas ref={ref} className="cape-canvas" alt="" />
     </span>
   )
 }

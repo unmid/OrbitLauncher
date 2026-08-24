@@ -79,9 +79,24 @@ async fn mr_search(
     if !mc_version.is_empty() {
         facets.push(vec![format!("versions:{mc_version}")]);
     }
-    // loader categories apply to mods and shaders on Modrinth
-    if !loader.is_empty() && loader != "vanilla" && kind != "resourcepack" {
-        facets.push(vec![format!("categories:{loader}")]);
+    // Loader categories: mods are tagged with the loader name, but shader packs
+    // are tagged "iris"/"optifine" on Modrinth — filtering shaders by
+    // "categories:fabric" always returned zero results.
+    if !loader.is_empty() && kind != "resourcepack" {
+        if kind == "shader" {
+            let cats: Vec<String> = if loader == "optifine" {
+                vec!["categories:optifine".to_string()]
+            } else if loader != "vanilla" {
+                vec!["categories:iris".to_string(), "categories:optifine".to_string()]
+            } else {
+                vec![]
+            };
+            if !cats.is_empty() {
+                facets.push(cats);
+            }
+        } else if loader != "vanilla" {
+            facets.push(vec![format!("categories:{loader}")]);
+        }
     }
     let facets_str = serde_json::to_string(&facets).map_err(|e| e.to_string())?;
 
@@ -321,20 +336,48 @@ async fn mr_resolve(
         .to_string();
 
     let mut query: Vec<(&str, String)> = vec![("game_versions", format!(r#"["{mc_version}"]"#))];
-    if !loader.is_empty() && loader != "vanilla" && proj_type != "resourcepack" {
+    // Shader packs are tagged "iris"/"optifine" (not fabric/forge) in the
+    // Modrinth version loaders field — asking for loaders:["fabric"] on a
+    // shader always returned an empty list.
+    if proj_type == "shader" {
+        if loader == "optifine" {
+            query.push(("loaders", r#"["optifine"]"#.to_string()));
+        } else if loader != "vanilla" {
+            query.push(("loaders", r#"["iris","optifine"]"#.to_string()));
+        }
+    } else if !loader.is_empty() && loader != "vanilla" && proj_type != "resourcepack" {
         query.push(("loaders", format!(r#"["{loader}"]"#)));
     }
-    let versions: Value = http
-        .get(format!("{MODRINTH}/project/{project_id}/version"))
-        .query(&query)
-        .send()
+    let fetch_versions = |loaders_filter: bool| {
+        let mut q: Vec<(&str, String)> = vec![("game_versions", format!(r#"["{mc_version}"]"#))];
+        if loaders_filter {
+            for (k, v) in query.iter() {
+                if *k == "loaders" {
+                    q.push((k, v.clone()));
+                }
+            }
+        }
+        http.get(format!("{MODRINTH}/project/{project_id}/version"))
+            .query(&q)
+            .send()
+    };
+    let resp = fetch_versions(true)
         .await
         .map_err(|e| e.to_string())?
         .error_for_status()
-        .map_err(|e| format!("No version of {title} for Minecraft {mc_version} ({e})"))?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("No version of {title} for Minecraft {mc_version} ({e})"))?;
+    let mut versions: Value = resp.json().await.map_err(|e| e.to_string())?;
+    // Some shader packs are not tagged at all — retry without the loader
+    // filter before giving up.
+    if versions.as_array().map(|a| a.is_empty()).unwrap_or(true) && proj_type == "shader" {
+        if let Ok(resp) = fetch_versions(false).await {
+            if let Ok(r) = resp.error_for_status().map_err(|e| e.to_string()) {
+                if let Ok(v) = r.json::<Value>().await {
+                    versions = v;
+                }
+            }
+        }
+    }
 
     let version = versions
         .as_array()
