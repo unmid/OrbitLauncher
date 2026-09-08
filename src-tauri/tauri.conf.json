@@ -31,12 +31,7 @@
   "bundle": {
     "active": true,
     "targets": [
-      "nsis",
-      "msi",
-      "app",
-      "dmg",
-      "appimage",
-      "deb"
+      "nsis"
     ],
     "createUpdaterArtifacts": true,
     "category": "Game",

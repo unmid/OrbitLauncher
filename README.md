@@ -1,6 +1,6 @@
 # Orbit Launcher
 
-A fast, simple Minecraft launcher for Windows, macOS and Linux. Built with Tauri 2, React and Rust.
+A fast, simple Minecraft launcher for Windows. Built with Tauri 2, React and Rust.
 
 Orbit Launcher organizes your game into **Spaces** — self-contained instances with their own Minecraft version, mod loader, mods, resource packs, shaders and worlds. Everything is installed and updated for you; pressing Play is the only step that matters.
 
@@ -17,15 +17,9 @@ Orbit Launcher organizes your game into **Spaces** — self-contained instances 
 
 ## Download
 
-Get the latest installer for your platform from [Releases](https://github.com/unmid/OrbitLauncher/releases/latest):
+Get the latest Windows installer (`Orbit Launcher_x64-setup.exe`) from [Releases](https://github.com/unmid/OrbitLauncher/releases/latest).
 
-| Platform | Asset |
-| --- | --- |
-| Windows | `Orbit Launcher_x64-setup.exe` (NSIS) or `.msi` |
-| macOS (Apple Silicon) | `Orbit Launcher_aarch64.dmg` |
-| Linux | `.AppImage` or `.deb` |
-
-Existing installs update automatically — see `update.txt`.
+Existing installs update automatically — see `update.txt`. macOS and Linux builds are planned for a later release.
 
 ## Building from source
 
@@ -44,7 +38,7 @@ npm run tauri dev
 
 ## Releases
 
-Releases are built by GitHub Actions for Windows (x64), macOS (Apple Silicon) and Linux (x64) whenever a `v*` tag is pushed. Each release publishes signed updater artifacts (`latest.json` and signatures) so installed apps update themselves to that tag automatically.
+Releases are built by GitHub Actions for Windows (x64) whenever a `v*` tag is pushed. Each release publishes signed updater artifacts (`latest.json` and signatures) so installed apps update themselves to that tag automatically.
 
 ## Versioning
 

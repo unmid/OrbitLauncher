@@ -13,7 +13,7 @@ How it works
 1. Every release is built by GitHub Actions and published to
    https://github.com/unmid/OrbitLauncher/releases as a version tag
    (v1.0.0, v1.1.0, ...). Each release carries signed updater artifacts
-   (latest.json plus .sig signatures) for Windows, macOS and Linux.
+   (latest.json plus .sig signatures) for Windows.
 
 2. On startup, Orbit Launcher checks the latest release tag through the
    Tauri updater. If a newer version exists, it downloads the signed
