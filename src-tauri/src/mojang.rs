@@ -36,6 +36,7 @@ pub struct Artifact {
 
 #[derive(Debug, Clone)]
 pub struct LibraryEntry {
+    #[allow(dead_code)] // mirrors the Mojang library JSON
     pub name: String,
     pub artifact: Option<Artifact>,
     pub natives: Option<Artifact>,

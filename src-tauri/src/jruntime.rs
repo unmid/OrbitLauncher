@@ -41,6 +41,7 @@ fn java_exe_name() -> &'static str {
     }
 }
 
+#[allow(dead_code)] // part of the runtime-layout API surface
 pub fn runtime_java_path(root: &PathBuf, component: &str) -> PathBuf {
     root.join("runtimes")
         .join(component)
@@ -276,6 +277,7 @@ async fn download_component(
 }
 
 /// Last-resort fallback: a system java on PATH.
+#[allow(dead_code)]
 pub fn system_java() -> Option<PathBuf> {
     system_java_for(None)
 }

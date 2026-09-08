@@ -34,6 +34,7 @@ pub struct PackFile {
 #[derive(Debug, Clone)]
 pub struct PackPlan {
     pub name: String,
+    #[allow(dead_code)] // carried for pack details views
     pub summary: String,
     pub mc_version: String,
     pub loader: String,

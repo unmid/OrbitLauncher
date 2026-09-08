@@ -55,6 +55,7 @@ pub struct Space {
 }
 
 impl Space {
+    #[allow(dead_code)] // constructor used by import flows
     pub fn new(name: &str, icon: &str, color: &str, mc_version: &str, loader: &str) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
