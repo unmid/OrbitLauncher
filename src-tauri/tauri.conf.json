@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Orbit Launcher (beta)",
-  "version": "3.1.0",
-  "identifier": "com.orbit.launcher.beta",
+  "productName": "Orbit Launcher",
+  "version": "1.0.0",
+  "identifier": "com.orbit.launcher",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,14 +12,14 @@
   "app": {
     "windows": [
       {
-        "title": "Orbit Launcher (beta)",
-        "width": 1180,
-        "height": 720,
-        "minWidth": 700,
-        "minHeight": 500,
+        "title": "Orbit Launcher",
+        "width": 1240,
+        "height": 780,
+        "minWidth": 940,
+        "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true,
+        "decorations": false,
         "center": true,
         "additionalBrowserArgs": "--autoplay-policy=no-user-gesture-required --disable-context-menu"
       }
@@ -30,20 +30,42 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis",
+      "msi",
+      "dmg",
+      "appimage",
+      "deb"
+    ],
+    "createUpdaterArtifacts": true,
     "category": "Game",
     "shortDescription": "Fast, simple Minecraft launcher",
+    "publisher": "Orbit Launcher Contributors",
+    "copyright": "Copyright © 2026 Orbit Launcher Contributors",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico",
+      "icons/icon.icns",
       "icons/icon.png"
     ],
     "windows": {
       "nsis": {
         "installMode": "currentUser",
         "displayLanguageSelector": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/unmid/OrbitLauncher/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERDNDJEMDM0Rjc4QTA2OUMKUldTY0JvcjNOTkJDM05aS3JnUjQwVmVwRmN1VVVPS08yS1NLSlkxRHdkaTc4R2Z6SHNZSzcwbFYK",
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

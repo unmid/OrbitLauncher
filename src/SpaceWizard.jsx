@@ -11,12 +11,12 @@ const STEPS = [
   { id: 'name', label: 'Name it' },
 ]
 
-export default function SpaceWizard({ existing = null, settings, onClose, onSaved, notify }) {
+export default function SpaceWizard({ existing = null, settings, onClose, onSaved, onSpaceCreated, notify }) {
   const isEdit = !!existing
   const [step, setStep] = useState(0)
   const [versions, setVersions] = useState(null)
   const [versionFilter, setVersionFilter] = useState('')
-  const [versionKind, setVersionKind] = useState('all')
+  const [versionKind, setVersionKind] = useState('release')
   const [mcVersion, setMcVersion] = useState(existing?.mcVersion || '')
   const [loader, setLoader] = useState(existing?.loader || 'fabric')
   const [loaderVersion, setLoaderVersion] = useState(existing?.loaderVersion || null)
@@ -31,11 +31,11 @@ export default function SpaceWizard({ existing = null, settings, onClose, onSave
   const [loaderBusy, setLoaderBusy] = useState(false)
 
   useEffect(() => {
-    api.listGameVersions(!!settings.showSnapshots)
+    api.listGameVersions()
       .then(setVersions)
       .catch((e) => { notify(String(e), 'error'); setVersions([]) })
     api.listInstalledVersions().then((v) => setInstalled(new Set(v))).catch(() => {})
-  }, [settings.showSnapshots]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!mcVersion || loader === 'vanilla') { setLoaderVersions([]); setLoaderVersion(null); setLoaderBusy(false); return }
@@ -56,7 +56,11 @@ export default function SpaceWizard({ existing = null, settings, onClose, onSave
     if (!versions) return []
     const q = versionFilter.trim().toLowerCase()
     let list = q ? versions.filter((v) => v.id.toLowerCase().includes(q)) : versions
-    if (versionKind !== 'all') list = list.filter((v) => v.kind === versionKind)
+    if (versionKind === 'classic') {
+      list = list.filter((v) => v.kind === 'old_beta' || v.kind === 'old_alpha')
+    } else if (versionKind !== 'all') {
+      list = list.filter((v) => v.kind === versionKind)
+    }
     // already-downloaded versions float to the top
     return list.slice().sort((a, b) => Number(installed.has(b.id)) - Number(installed.has(a.id)))
   }, [versions, versionFilter, versionKind, installed])
@@ -178,29 +182,37 @@ export default function SpaceWizard({ existing = null, settings, onClose, onSave
                     placeholder="Search versions… try “1.21”"
                   />
                 </div>
-                <div className="segment">
-                  {[['all', 'All'], ['release', 'Releases'], ['snapshot', 'Snapshots']].map(([id, label]) => (
-                    <button key={id} className={`segment-btn ${versionKind === id ? 'active' : ''}`} onClick={() => setVersionKind(id)}>{label}</button>
-                  ))}
-                </div>
+                <Dropdown
+                  value={versionKind}
+                  onChange={setVersionKind}
+                  options={[
+                    { value: 'release', label: 'Releases' },
+                    { value: 'snapshot', label: 'Snapshots' },
+                    { value: 'classic', label: 'Classic' },
+                    { value: 'all', label: 'Everything' },
+                  ]}
+                />
               </div>
               {!versions ? (
-                <div className="version-grid">
-                  {Array.from({ length: 18 }).map((_, i) => <div key={i} className="skeleton skeleton-chip" />)}
+                <div className="version-list">
+                  {Array.from({ length: 9 }).map((_, i) => <div key={i} className="skeleton" style={{ height: 41, borderRadius: 10 }} />)}
                 </div>
               ) : (
-                <div className="version-grid">
+                <div className="version-list">
                   {filteredVersions.map((v) => (
                     <button
                       key={v.id + v.kind}
-                      className={`version-chip ${mcVersion === v.id ? 'selected' : ''}`}
+                      className={`version-row ${mcVersion === v.id ? 'selected' : ''}`}
                       onClick={() => setMcVersion(v.id)}
                     >
-                      <span className="version-chip-id">{v.id}</span>
-                      <span className="version-chip-tags">
-                        {installed.has(v.id) && <span className="installed-badge"><IconDownload size={10} /> installed</span>}
-                        <span className={`version-chip-kind ${v.kind === 'release' ? 'kind-release' : 'kind-snapshot'}`}>{v.kind}</span>
-                      </span>
+                      <span className="version-row-id">{v.id}</span>
+                      {installed.has(v.id) && <span className="installed-badge"><IconDownload size={10} /> installed</span>}
+                      {v.kind !== 'release' && (
+                        <span className={`version-chip-kind ${v.kind === 'release' ? 'kind-release' : 'kind-snapshot'}`}>
+                          {v.kind === 'snapshot' ? 'snapshot' : v.kind.startsWith('old') ? 'classic' : v.kind}
+                        </span>
+                      )}
+                      {mcVersion === v.id && <span className="version-row-check"><IconCheck size={15} /></span>}
                     </button>
                   ))}
                   {filteredVersions.length === 0 && (
@@ -276,6 +288,7 @@ export default function SpaceWizard({ existing = null, settings, onClose, onSave
                 onUnpick={unpick}
                 directSpaceId={isEdit ? existing.id : null}
                 onDirectChange={onSaved}
+                onSpaceCreated={onSpaceCreated}
                 notify={notify}
               />
             </div>

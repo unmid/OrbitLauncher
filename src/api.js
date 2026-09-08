@@ -5,7 +5,17 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 const loaderVersionCache = new Map()
 const isTauriRuntime = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__)
 const SERVER_LIST_URL = 'https://raw.githubusercontent.com/unmid/OL-updater/main/olserverlist.json'
-const PREVIEW_GAME_VERSIONS = ['1.21.8', '1.21.7', '1.21.6', '1.21.5', '1.21.4', '1.21.1', '1.20.6', '1.20.4', '1.20.1', '1.19.4', '1.18.2', '1.16.5', '1.12.2', '1.8.9'].map((id) => ({ id, kind: 'release', releaseTime: '' }))
+const PREVIEW_GAME_VERSIONS = [
+  { id: '1.21.8', kind: 'release', releaseTime: '' }, { id: '25w31a', kind: 'snapshot', releaseTime: '' },
+  { id: '1.21.7', kind: 'release', releaseTime: '' }, { id: '1.21.6', kind: 'release', releaseTime: '' },
+  { id: '1.21.5', kind: 'release', releaseTime: '' }, { id: '1.21.4', kind: 'release', releaseTime: '' },
+  { id: '1.21.1', kind: 'release', releaseTime: '' }, { id: 'b1.7.3', kind: 'old_beta', releaseTime: '' },
+  { id: '1.20.6', kind: 'release', releaseTime: '' }, { id: '1.20.4', kind: 'release', releaseTime: '' },
+  { id: '1.20.1', kind: 'release', releaseTime: '' }, { id: 'rd-132211', kind: 'old_alpha', releaseTime: '' },
+  { id: '1.19.4', kind: 'release', releaseTime: '' }, { id: '1.18.2', kind: 'release', releaseTime: '' },
+  { id: '1.16.5', kind: 'release', releaseTime: '' }, { id: '1.12.2', kind: 'release', releaseTime: '' },
+  { id: '1.8.9', kind: 'release', releaseTime: '' },
+]
 const PREVIEW_SERVERS = [{ name: 'Orbit Community', ip: 'play.orbit.example', port: 25565, icon: '', motd: 'Preview server list', category: 'Community', sponsored: false, minVersion: '1.21' }]
 
 export const api = {
@@ -14,9 +24,9 @@ export const api = {
   saveSettings: (settings) => isTauriRuntime() ? invoke('save_settings', { settings }) : Promise.resolve(settings),
 
   // versions / loaders
-  listGameVersions: (showSnapshots = false) => isTauriRuntime()
-    ? invoke('list_game_versions', { showSnapshots })
-    : Promise.resolve(showSnapshots ? [...PREVIEW_GAME_VERSIONS, { id: '25w31a', kind: 'snapshot', releaseTime: '' }] : PREVIEW_GAME_VERSIONS),
+  listGameVersions: () => isTauriRuntime()
+    ? invoke('list_game_versions')
+    : Promise.resolve(PREVIEW_GAME_VERSIONS),
   listLoaderVersions: async (loader, mcVersion) => {
     const key = `${loader}:${mcVersion}`
     if (loaderVersionCache.has(key)) return loaderVersionCache.get(key)
@@ -58,6 +68,14 @@ export const api = {
   removeContent: (spaceId, projectId) => invoke('remove_content', { spaceId, projectId }),
   reconcileContent: (spaceId) => invoke('reconcile_content', { spaceId }),
 
+  // modpacks + local files
+  installModpack: (source, projectId, mcVersion = null) => invoke('install_modpack', { source, projectId, mcVersion }),
+  importModpackFile: (path) => invoke('import_modpack_file', { path }),
+  importContentFiles: (spaceId, paths, kind = null, world = null) =>
+    invoke('import_content_files', { spaceId, paths, kind, world }),
+  listSpaceWorlds: (spaceId) => isTauriRuntime() ? invoke('list_space_worlds', { spaceId }) : Promise.resolve([]),
+  assignDatapack: (spaceId, projectId, world) => invoke('assign_datapack', { spaceId, projectId, world }),
+
   // remote + servers
   getHomePages: () => invoke('get_home_pages'),
   getServerList: () => isTauriRuntime()
@@ -82,15 +100,13 @@ export const api = {
   uploadSkin: (accountId, path, variant) => invoke('upload_skin', { accountId, path, variant }),
 
   // optimize / storage
-  hardwareScan: () => invoke('hardware_scan'),
-  recommendedRam: (totalGb) => invoke('recommended_ram', { totalGb }),
-  storageBreakdown: () => invoke('storage_breakdown'),
-  cleanStorageJunk: () => invoke('clean_storage_junk'),
+  hardwareScan: () => isTauriRuntime() ? invoke('hardware_scan') : Promise.resolve(null),
+  recommendedRam: (totalGb) => isTauriRuntime() ? invoke('recommended_ram', { totalGb }) : Promise.resolve(4),
+  storageBreakdown: () => isTauriRuntime() ? invoke('storage_breakdown') : Promise.resolve([]),
+  cleanStorageJunk: () => isTauriRuntime() ? invoke('clean_storage_junk') : Promise.resolve(0),
 
-  // news / update
-  fetchNews: () => invoke('fetch_news'),
-  fetchArticle: (url) => invoke('fetch_article', { url }),
-  checkUpdate: () => invoke('check_update'),
+  // update
+  checkUpdate: () => isTauriRuntime() ? invoke('check_update') : Promise.resolve({ available: false }),
   downloadUpdate: (url) => invoke('download_update', { url }),
 
   // misc
@@ -98,8 +114,8 @@ export const api = {
   launchSpace: (spaceId, server) =>
     invoke('launch_space', server ? { spaceId, serverIp: server.ip, serverPort: server.port } : { spaceId }),
   isRunning: (spaceId) => invoke('is_running', { spaceId }),
-  appDataDir: () => invoke('app_data_dir'),
-  openUrl: (url) => invoke('open_url', { url }),
+  appDataDir: () => isTauriRuntime() ? invoke('app_data_dir') : Promise.resolve(''),
+  openUrl: (url) => isTauriRuntime() ? invoke('open_url', { url }) : Promise.resolve(window.open(url, '_blank')),
   readLogs: () => isTauriRuntime() ? invoke('read_logs') : Promise.resolve(''),
 
   onProgress: (handler) => {

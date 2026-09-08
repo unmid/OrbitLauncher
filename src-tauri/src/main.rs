@@ -8,8 +8,8 @@ mod hardware;
 mod jruntime;
 mod launch;
 mod loaders;
+mod modpack;
 mod mojang;
-mod news;
 mod profile;
 mod remote;
 mod servers;
@@ -69,14 +69,13 @@ struct GameVersion {
 }
 
 #[tauri::command]
-async fn list_game_versions(
-    state: State<'_, AppState>,
-    show_snapshots: bool,
-) -> Result<Vec<GameVersion>, String> {
+async fn list_game_versions(state: State<'_, AppState>) -> Result<Vec<GameVersion>, String> {
+    // Every kind is returned (release / snapshot / old_beta / old_alpha) — the
+    // wizard filters client-side, so the Snapshots tab can never be a dead end
+    // just because an unrelated setting is off.
     let manifest = mojang::fetch_manifest(&state.http).await?;
     Ok(manifest
         .into_iter()
-        .filter(|v| v.kind == "release" || (show_snapshots && v.kind == "snapshot"))
         .map(|v| GameVersion {
             id: v.id,
             kind: v.kind,
@@ -326,7 +325,7 @@ async fn install_content(
     // cannot load together and destabilize Minecraft.
     for old in &previous {
         if old.file_name != installed.file_name || old.kind != installed.kind {
-            let _ = content::remove_content_file(&state.root, &space_id, &old.kind, &old.file_name);
+            let _ = content::remove_content_file(&state.root, &space_id, &old.kind, old.world.as_deref(), &old.file_name);
         }
     }
     space.mods.retain(|m| m.project_id != installed.project_id && !(!m.project_id.contains(':') && m.project_id == project_id));
@@ -344,7 +343,9 @@ fn reconcile_content(
     let mut all = state.spaces();
     let space = all.iter_mut().find(|s| s.id == space_id).ok_or("Space not found")?;
     let original_len = space.mods.len();
-    space.mods.retain(|m| content::content_file_exists(&state.root, &space_id, &m.kind, &m.file_name));
+    space.mods.retain(|m| {
+        content::content_file_exists(&state.root, &space_id, &m.kind, m.world.as_deref(), &m.file_name)
+    });
     let space = space.clone();
     if space.mods.len() != original_len {
         state.persist_spaces(&all)?;
@@ -367,8 +368,8 @@ fn remove_content(
         .find(|s| s.id == space_id)
         .ok_or("Space not found")?;
     if let Some(m) = space.mods.iter().find(|m| matches(&m.project_id)) {
-        let (file, kind) = (m.file_name.clone(), m.kind.clone());
-        let _ = content::remove_content_file(&state.root, &space_id, &kind, &file);
+        let (file, kind, world) = (m.file_name.clone(), m.kind.clone(), m.world.clone());
+        let _ = content::remove_content_file(&state.root, &space_id, &kind, world.as_deref(), &file);
     }
     space.mods.retain(|m| !matches(&m.project_id));
     let space = space.clone();
@@ -583,16 +584,440 @@ async fn clean_storage_junk(state: State<'_, AppState>) -> Result<u64, String> {
 }
 
 // ---------------------------------------------------------------------------
-// news
+// modpacks + local content imports
 
-#[tauri::command]
-async fn fetch_news(state: State<'_, AppState>) -> Result<Vec<news::NewsItem>, String> {
-    news::fetch_news(&state.http).await
+/// Download a modpack archive (Modrinth `.mrpack` or CurseForge manifest zip)
+/// into the cache and return its bytes plus the cached path.
+///
+/// `mc_version` pins the pack to the caller's selected Minecraft version: the
+/// newest pack build FOR THAT VERSION is used, and an unsupported selection is
+/// a clean error — never a silent "latest" install.
+async fn fetch_pack_archive(
+    state: &State<'_, AppState>,
+    source: &str,
+    project_id: &str,
+    mc_version: Option<String>,
+) -> Result<(Vec<u8>, PathBuf), String> {
+    let wanted = mc_version.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let (url, _title, _icon) = match source {
+        "curseforge" => {
+            let details = content::content_details(&state.http, "curseforge", project_id).await?;
+            // Files aren't guaranteed sorted; take a page and pick the newest
+            // by numeric id ourselves.
+            let mut endpoint = format!("{}/mods/{project_id}/files?pageSize=12", content::CURSEFORGE);
+            if let Some(mv) = wanted {
+                endpoint.push_str(&format!("&gameVersion={}", urlencode(mv)));
+            }
+            let resp: serde_json::Value = crate::remote::cf_api_get(&state.http, &endpoint).await?;
+            let found = resp
+                .get("data")
+                .and_then(|x| x.as_array())
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|f| f.get("id").and_then(|x| x.as_u64()).map(|id| (id, f)))
+                .max_by_key(|(id, _)| *id)
+                .map(|(_, f)| f);
+            let latest = match (found, wanted) {
+                (Some(f), _) => f,
+                (None, Some(mv)) => {
+                    return Err(format!(
+                        "This pack has no build for Minecraft {mv}.{}",
+                        if details.game_versions.is_empty() { String::new() } else { format!(" It supports: {}", truncate_list(&details.game_versions.join(", "), 8)) }
+                    ));
+                }
+                _ => return Err("Pack has no downloadable file".into()),
+            };
+            let file_id = latest.get("id").and_then(|x| x.as_u64()).ok_or("Bad file id")?;
+            let url = match latest.get("downloadUrl").and_then(|x| x.as_str()) {
+                Some(u) if !u.is_empty() => u.to_string(),
+                _ => crate::remote::cf_download_url(&state.http, project_id, file_id).await?,
+            };
+            (url, details.title, details.icon_url)
+        }
+        _ => {
+            let details = content::content_details(&state.http, "modrinth", project_id).await?;
+            let mut endpoint = format!("{}/project/{project_id}/version", content::MODRINTH);
+            if let Some(mv) = wanted {
+                endpoint.push_str(&format!("?game_versions=%5B%22{}%22%5D", urlencode(mv)));
+            }
+            let versions: Vec<serde_json::Value> = state
+                .http
+                .get(&endpoint)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?
+                .error_for_status()
+                .map_err(|e| e.to_string())?
+                .json()
+                .await
+                .map_err(|e| e.to_string())?;
+
+            // Newest published build wins (list order is not guaranteed).
+            let first = versions
+                .iter()
+                .max_by_key(|v| v.get("date_published").and_then(|x| x.as_str()).unwrap_or("").to_string())
+                .cloned();
+            let first = match (first, wanted) {
+                (Some(v), _) => v,
+                (None, Some(mv)) => {
+                    // Confirm whether the pack supports that version at all.
+                    let all: Vec<serde_json::Value> = match state
+                        .http
+                        .get(format!("{}/project/{project_id}/version", content::MODRINTH))
+                        .send()
+                        .await
+                    {
+                        Ok(r) => r.json::<Vec<serde_json::Value>>().await.unwrap_or_default(),
+                        Err(_) => Vec::new(),
+                    };
+                    let mut supported: Vec<String> = all
+                        .iter()
+                        .flat_map(|v| v.get("game_versions").and_then(|x| x.as_array()).cloned().unwrap_or_default())
+                        .filter_map(|g| g.as_str().map(str::to_string))
+                        .collect();
+                    supported.sort();
+                    supported.dedup();
+                    return Err(format!(
+                        "This pack has no build for Minecraft {mv}.{}",
+                        if supported.is_empty() { String::new() } else { format!(" It supports: {}", truncate_list(&supported.join(", "), 8)) }
+                    ));
+                }
+                _ => return Err("This modpack has no files yet".into()),
+            };
+            let files = first.get("files").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+            let file = files
+                .iter()
+                .find(|f| f.get("primary").and_then(|x| x.as_bool()).unwrap_or(false))
+                .or_else(|| files.first())
+                .ok_or("This modpack has no downloadable file")?;
+            let url = file.get("url").and_then(|x| x.as_str()).ok_or("Bad file URL")?.to_string();
+            (url, details.title, details.icon_url)
+        }
+    };
+
+    let resp = state
+        .http
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| format!("Couldn't download the modpack ({e})"))?;
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+
+    let cache_dir = state.root.join("cache").join("packs");
+    std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+    let path = cache_dir.join(format!("{}.pack", uuid::Uuid::new_v4()));
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    Ok((bytes, path))
 }
 
+fn truncate_list(s: &str, max_items: usize) -> String {
+    let items: Vec<&str> = s.split(", ").collect();
+    if items.len() <= max_items {
+        s.to_string()
+    } else {
+        format!("{} …and {} more", items[..max_items].join(", "), items.len() - max_items)
+    }
+}
+
+fn urlencode(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// Parse an archive into a plan, auto-detecting the format.
+async fn plan_from_archive(bytes: &[u8]) -> Result<(modpack::PackPlan, &'static str), String> {
+    match modpack::plan_from_mrpack(bytes) {
+        Ok(plan) => Ok((plan, "modrinth")),
+        Err(mr_err) => match modpack::plan_from_cf_zip_bytes(bytes).await {
+            Ok(plan) => Ok((plan, "curseforge")),
+            Err(_) => Err(format!("Not a supported modpack (tried Modrinth .mrpack and CurseForge formats). Modrinth said: {mr_err}")),
+        },
+    }
+}
+
+fn sanitize_pack_name(name: &str) -> String {
+    let clean: String = name.chars().filter(|c| !c.is_control()).take(32).collect();
+    let trimmed = clean.trim();
+    if trimmed.is_empty() { "Modpack".into() } else { trimmed.to_string() }
+}
+
+/// One-click: install a Modrinth/CurseForge modpack as a brand-new Space.
+/// `mc_version` (optional) pins the pack to the selected Minecraft version.
 #[tauri::command]
-async fn fetch_article(state: State<'_, AppState>, url: String) -> Result<String, String> {
-    news::fetch_article_text(&state.http, &url).await
+async fn install_modpack(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    source: String,
+    project_id: String,
+    mc_version: Option<String>,
+) -> Result<spaces::Space, String> {
+    let (bytes, temp_path) = fetch_pack_archive(&state, &source, &project_id, mc_version).await?;
+    let (plan, detected_source) = plan_from_archive(&bytes).await?;
+
+    let mut space = spaces::Space {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: sanitize_pack_name(&plan.name),
+        icon: "rocket".into(),
+        color: "#5ac8fa".into(),
+        mc_version: plan.mc_version.clone(),
+        loader: plan.loader.clone(),
+        loader_version: plan.loader_version.clone(),
+        installed_version_id: None,
+        mods: vec![],
+        created_at: spaces::now_secs(),
+        last_played: None,
+        ram_gb: None,
+    };
+    if !loaders::LOADER_KINDS.contains(&space.loader.as_str()) {
+        space.loader = "vanilla".into();
+        space.loader_version = None;
+    }
+
+    let mut all = state.spaces();
+    all.push(space.clone());
+    state.persist_spaces(&all)?;
+    drop(all);
+
+    spawn_pack_install(app, state.inner().clone_state(), space.clone(), plan, detected_source.to_string(), temp_path);
+    Ok(space)
+}
+
+/// Install a locally-picked `.mrpack` or CurseForge manifest `.zip`.
+#[tauri::command]
+async fn import_modpack_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<spaces::Space, String> {
+    let bytes = std::fs::read(&path).map_err(|e| format!("Can't read the file: {e}"))?;
+    if bytes.len() > 1024 * 1024 * 1024 {
+        return Err("That file is way too big to be a modpack".into());
+    }
+    let (plan, detected_source) = plan_from_archive(&bytes).await?;
+    let temp_path = state.root.join("cache").join("packs").join(format!("{}.pack", uuid::Uuid::new_v4()));
+    let _ = std::fs::create_dir_all(temp_path.parent().unwrap());
+    std::fs::write(&temp_path, &bytes).map_err(|e| e.to_string())?;
+
+    let mut space = spaces::Space {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: sanitize_pack_name(&plan.name),
+        icon: "rocket".into(),
+        color: "#5ac8fa".into(),
+        mc_version: plan.mc_version.clone(),
+        loader: plan.loader.clone(),
+        loader_version: plan.loader_version.clone(),
+        installed_version_id: None,
+        mods: vec![],
+        created_at: spaces::now_secs(),
+        last_played: None,
+        ram_gb: None,
+    };
+    if !loaders::LOADER_KINDS.contains(&space.loader.as_str()) {
+        space.loader = "vanilla".into();
+        space.loader_version = None;
+    }
+
+    let mut all = state.spaces();
+    all.push(space.clone());
+    state.persist_spaces(&all)?;
+
+    spawn_pack_install(app, state.inner().clone_state(), space.clone(), plan, detected_source.to_string(), temp_path);
+    Ok(space)
+}
+
+/// Cloneable subset of AppState for background tasks.
+struct BgState {
+    root: PathBuf,
+}
+
+impl AppState {
+    fn clone_state(&self) -> BgState {
+        BgState { root: self.root.clone() }
+    }
+}
+
+/// Background worker: downloads every pack file into the fresh Space while the
+/// UI watches live byte progress on the card / bottom bar.
+fn spawn_pack_install(
+    app: AppHandle,
+    bg: BgState,
+    space: spaces::Space,
+    plan: modpack::PackPlan,
+    detected_source: String,
+    temp_path: PathBuf,
+) {
+    tauri::async_runtime::spawn(async move {
+        let sid = space.id.clone();
+        let label = space.name.clone();
+        let label_for_progress = label.clone();
+        let total_files = plan.files.len();
+
+        record_log(&app, &bg.root, "info", "modpack", &format!("Installing pack '{label}' ({detected_source}, {total_files} files)"));
+        let app2 = app.clone();
+        let progress: Arc<dyn Fn(u64, u64) + Send + Sync> = Arc::new(move |done, total| {
+            let _ = app2.emit(
+                "space-progress",
+                ProgressPayload {
+                    space_id: sid.clone(),
+                    stage: "files".into(),
+                    message: format!("Setting up {label_for_progress}"),
+                    done,
+                    total,
+                },
+            );
+        });
+
+        let http = reqwest::Client::builder()
+            .user_agent(concat!("OrbitLauncher/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(std::time::Duration::from_secs(20))
+            .build()
+            .expect("http client");
+
+        let result = modpack::install_plan_files(&bg.root, http, &space.id, &plan, progress).await;
+        let mut plan = plan;
+        plan.cleanup();
+        let _ = std::fs::remove_file(&temp_path);
+
+        match result {
+            Ok(()) => {
+                let records = modpack::records_for_plan(&plan);
+                let count = records.len();
+                let mut all = spaces::load_spaces(&bg.root);
+                if let Some(slot) = all.iter_mut().find(|s| s.id == space.id) {
+                    slot.mods.extend(records);
+                    let _ = spaces::save_spaces(&bg.root, &all);
+                }
+                record_log(&app, &bg.root, "info", "modpack", &format!("Pack '{label}' ready ({count} items)"));
+                let _ = app.emit(
+                    "space-progress",
+                    ProgressPayload {
+                        space_id: space.id.clone(),
+                        stage: "ready".into(),
+                        message: format!("{label} is ready — press Play"),
+                        done: 0,
+                        total: 0,
+                    },
+                );
+            }
+            Err(e) => {
+                record_log(&app, &bg.root, "error", "modpack", &format!("Pack '{label}' failed: {e}"));
+                let _ = app.emit(
+                    "space-progress",
+                    ProgressPayload {
+                        space_id: space.id,
+                        stage: "error".into(),
+                        message: e,
+                        done: 0,
+                        total: 0,
+                    },
+                );
+            }
+        }
+    });
+}
+
+/// Worlds (saves) available in a Space — used as datapack install targets.
+#[tauri::command]
+fn list_space_worlds(state: State<AppState>, space_id: String) -> Vec<String> {
+    let saves = spaces::space_dir(&state.root, &space_id).join("saves");
+    let mut out: Vec<String> = std::fs::read_dir(&saves)
+        .map(|rd| rd.flatten().filter(|e| e.path().is_dir()).map(|e| e.file_name().to_string_lossy().to_string()).collect())
+        .unwrap_or_default();
+    out.sort();
+    out
+}
+
+/// Copy uploaded local files (.jar/.zip) into a Space, sniffing what each one
+/// is unless told otherwise. Datapacks accept a target world.
+#[tauri::command]
+fn import_content_files(
+    state: State<AppState>,
+    space_id: String,
+    paths: Vec<String>,
+    kind: Option<String>,
+    world: Option<String>,
+) -> Result<spaces::Space, String> {
+    let mut all = state.spaces();
+    let space = all.iter_mut().find(|s| s.id == space_id).ok_or("Space not found")?;
+
+    for raw in &paths {
+        let src = PathBuf::from(raw);
+        let file_name = src
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .ok_or("Bad file path")?;
+        if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
+            return Err("Bad file name".into());
+        }
+        let resolved_kind = kind.clone().unwrap_or_else(|| modpack::sniff_kind(&src).to_string());
+        if !["mod", "resourcepack", "shader", "datapack"].contains(&resolved_kind.as_str()) {
+            return Err("Unsupported file type".into());
+        }
+
+        let dir = content::content_dir(&state.root, &space_id, &resolved_kind, world.as_deref());
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::copy(&src, dir.join(&file_name)).map_err(|e| format!("Couldn't copy {file_name}: {e}"))?;
+
+        let title = file_name.trim_end_matches(".jar").trim_end_matches(".zip").to_string();
+        let record = spaces::SpaceMod {
+            project_id: format!("local:{file_name}"),
+            title,
+            icon_url: String::new(),
+            version_number: String::new(),
+            file_name: file_name.clone(),
+            kind: resolved_kind,
+            world: world.clone(),
+        };
+        space.mods.retain(|m| !(m.project_id == record.project_id && m.world == record.world));
+        space.mods.push(record);
+    }
+
+    let space = space.clone();
+    state.persist_spaces(&all)?;
+    Ok(space)
+}
+
+/// Move a library datapack into a world (`Some(world)`), or back to the
+/// library (`None`). The library copy always stays for re-use.
+#[tauri::command]
+fn assign_datapack(
+    state: State<AppState>,
+    space_id: String,
+    project_id: String,
+    world: Option<String>,
+) -> Result<spaces::Space, String> {
+    let bare = project_id.rsplit(':').next().unwrap_or(&project_id);
+    let mut all = state.spaces();
+    let space = all.iter_mut().find(|s| s.id == space_id).ok_or("Space not found")?;
+
+    let record = space
+        .mods
+        .iter_mut()
+        .find(|m| m.kind == "datapack" && (m.project_id == project_id || m.project_id.rsplit(':').next() == Some(bare)))
+        .ok_or("Datapack not found in this Space")?;
+
+    let file_name = record.file_name.clone();
+    let from = content::content_dir(&state.root, &space_id, "datapack", None).join(&file_name);
+    if !from.exists() {
+        return Err("The datapack file is gone from the library".into());
+    }
+    let to_dir = content::content_dir(&state.root, &space_id, "datapack", world.as_deref());
+    std::fs::create_dir_all(&to_dir).map_err(|e| e.to_string())?;
+    std::fs::copy(&from, to_dir.join(&file_name)).map_err(|e| e.to_string())?;
+
+    record.world = world.filter(|w| !w.trim().is_empty());
+    let space = space.clone();
+    state.persist_spaces(&all)?;
+    Ok(space)
 }
 
 // ---------------------------------------------------------------------------
@@ -925,6 +1350,8 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(AppState {
             root: root.clone(),
             http,
@@ -950,6 +1377,11 @@ fn main() {
             install_content,
             reconcile_content,
             remove_content,
+            install_modpack,
+            import_modpack_file,
+            import_content_files,
+            list_space_worlds,
+            assign_datapack,
             get_home_pages,
             get_server_list,
             ping_server,
@@ -966,8 +1398,6 @@ fn main() {
             recommended_ram,
             storage_breakdown,
             clean_storage_junk,
-            fetch_news,
-            fetch_article,
             check_update,
             download_update,
             fetch_bytes_b64,

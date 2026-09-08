@@ -1,187 +1,74 @@
-# Orbit Launcher (beta)
+# Orbit Launcher
 
-A **fast, free, and open-source Minecraft launcher** for Windows. Create isolated
-installations (called *Spaces*) in seconds, attach a mod loader, grab content from
-Modrinth or CurseForge, and press **Play** — one click and you are in the game.
+A fast, simple Minecraft launcher for Windows, macOS and Linux. Built with Tauri 2, React and Rust.
 
-> **Beta software.** Orbit Launcher is actively being refined. Back up important
-> worlds and report reproducible issues with the Log tab output where possible.
-
-## What makes it different
-
-- **One-click play system** — a Space is version + loader + content in one bundle.
-  Pick them, name it, press Play. Downloads, Java selection, and launch arguments
-  are handled automatically.
-- **Isolated Spaces** — every Space keeps its own game settings, saves, mods,
-  resource packs, shaders, and logs. A modded experiment never disturbs another world.
-- **Zero setup** — Java runtimes are downloaded and selected automatically for the
-  Minecraft version you choose. No manual Java, no environment variables.
-- **API keys stay hidden** — CurseForge API keys are loaded from a local
-  `src-tauri/secrets.env` file that is **git-ignored and never bundled** into
-  builds or the installer. The published source and releases contain no keys.
-- **Built for reliability** — checksums, parallel downloads, cached loader
-  metadata, official launch arguments, and in-app logs make failures rare and
-  easy to diagnose.
+Orbit Launcher organizes your game into **Spaces** — self-contained instances with their own Minecraft version, mod loader, mods, resource packs, shaders and worlds. Everything is installed and updated for you; pressing Play is the only step that matters.
 
 ## Features
 
-| Area | Details |
+- **Spaces** — isolated instances per version and loader. Create one in four steps: pick a Minecraft version, pick software, optionally add content, name it.
+- **Mod loaders** — Vanilla, Fabric, Quilt, Forge, NeoForge and OptiFine, installed automatically with the correct Java runtime.
+- **Modrinth and CurseForge** — search and install mods, modpacks, resource packs, shaders and data packs directly into a Space. When you browse for a specific Minecraft version, Orbit resolves the newest project build that actually supports that version — on both platforms — instead of silently installing the latest incompatible file.
+- **Modpacks** — one-click Modrinth and CurseForge packs pinned to the Minecraft version you selected.
+- **Accounts** — Microsoft sign-in and offline accounts, with a live 3D skin preview, skin upload and cape selection.
+- **Servers** — server list with live status and player counts.
+- **Automatic updates** — the launcher updates itself in place from GitHub Releases. No reinstalling, ever.
+- **Interface** — frameless glass design, dark and light themes, eight accent colors, animated wallpapers, ambient in-app music, and full keyboard navigation.
+
+## Download
+
+Get the latest installer for your platform from [Releases](https://github.com/unmid/OrbitLauncher/releases/latest):
+
+| Platform | Asset |
 | --- | --- |
-| **Spaces** | Create, edit, duplicate, export, import, and open independent Minecraft installations |
-| **Software** | Vanilla, Fabric, Quilt, Forge, NeoForge, and OptiFine, resolved from official metadata or installers |
-| **Java** | Java 8/16/17/21 selected and validated per Minecraft version, with a verified system-Java fallback |
-| **Content browser** | Install mods, resource packs, and shaders from Modrinth or CurseForge; remove, re-add, update, and per-version compatibility warnings |
-| **Project details** | Click any project title for a safely rendered description (markdown-like HTML: headings, links, code, tables, images) |
-| **Accounts** | Microsoft and offline accounts, sign-in validation, skin and cape tools |
-| **Servers** | Server browser, ping, and direct join |
-| **Performance** | Balanced and Performance presets that write valid `options.txt` settings and JVM tuning flags |
-| **Logs** | In-app Log tab with launcher, loader, Java, and Minecraft output |
-| **Extras** | News feed, update checks, wallpapers, background music, light/dark themes, adjustable accent colors |
+| Windows | `Orbit Launcher_x64-setup.exe` (NSIS) or `.msi` |
+| macOS (Apple Silicon) | `Orbit Launcher_aarch64.dmg` |
+| Linux | `.AppImage` or `.deb` |
 
-## Installing
-
-Download the Windows **setup installer** from the latest release, run it, and
-launch **Orbit Launcher (beta)** from the Start menu or desktop shortcut.
-
-Orbit does not bundle Minecraft. On first launch it downloads the selected
-Minecraft files, libraries, assets, loader metadata, and a compatible Java
-runtime from their respective official sources.
-
-## Quick start
-
-1. Open **Spaces** and choose **New Space**.
-2. Select a Minecraft version and software (Vanilla, Fabric, Quilt, Forge,
-   NeoForge, or OptiFine).
-3. Optionally add content in the Content step.
-4. Name the Space and choose **Create Space**.
-5. Add an account and press **Play**.
-
-To manage installed content later, open a Space menu and choose **Edit** — the
-Content step is a real management tool: remove an installed item, install the
-newest compatible file, or re-add files that went missing.
-
-## Loader notes
-
-- **Forge / NeoForge** use their official headless installers. Orbit creates the
-  small launcher profile those installers require and validates it before launch.
-- **Fabric / Quilt** use their official metadata profiles, with a valid cached
-  fallback when the metadata service is temporarily unavailable.
-- **OptiFine** is a standalone option and does not make Fabric/Forge mods compatible.
-- Mod availability is controlled by the project author. Orbit filters results for
-  the selected Minecraft version and marks unsupported projects.
-
-## Logs and troubleshooting
-
-Open the **Log** tab after a failed launch. Useful checks:
-
-- Confirm the selected loader supports the selected Minecraft version.
-- Use **Edit → Content** to remove or update a conflicting mod.
-- Keep only one version of a mod in a Space — Orbit removes the prior file when
-  updating through the browser.
-- Include the visible Log entries when reporting an issue.
-
-Game data lives in `%APPDATA%\OrbitLauncher`; each Space lives under
-`%APPDATA%\OrbitLauncher\spaces`. Microsoft account tokens are stored by Windows
-Credential Manager, never in plain-text launcher files.
-
-## Security and API keys
-
-- CurseForge / other API keys are read from `src-tauri/secrets.env`, which is
-  **ignored by git** and **excluded from every build**.
-- Builds use only what is present in the repository at build time; a build without
-  the env file simply ships with those integrations disabled.
-- No keys, tokens, or credentials ever appear in source control or release assets.
+Existing installs update automatically — see `update.txt`.
 
 ## Building from source
 
-Requirements:
+Requirements: Node.js 22, Rust (stable), and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS.
 
-- Windows 10/11
-- Node.js 18 or newer
-- Rust via `rustup`
-- Visual Studio C++ Build Tools with the Windows SDK
-
-```bat
-npm install
-npm.cmd run tauri build
+```bash
+npm ci
+npm run tauri build
 ```
 
-The NSIS Windows installer is written to:
+Development mode with hot reload:
 
-```text
-src-tauri\target\release\bundle\nsis\Orbit Launcher (beta)_x64-setup.exe
+```bash
+npm run tauri dev
 ```
-
-### Checks
-
-```bat
-npm.cmd run build
-cargo test --manifest-path src-tauri\Cargo.toml
-cargo check --manifest-path src-tauri\Cargo.toml
-```
-
-The executable also provides a launch-pipeline self-test:
-
-```bat
-src-tauri\target\release\orbit-launcher.exe --selftest 1.21.1 forge
-src-tauri\target\release\orbit-launcher.exe --selftest 1.21.1 neoforge
-src-tauri\target\release\orbit-launcher.exe --selftest 1.20.4 quilt
-```
-
-Use `--run` only when you intentionally want the self-test to open Minecraft.
 
 ## Releases
 
-- **Orbit Launcher v3.0.0** — UI polish and bug fixes: the Home hero is now
-  cache-busted, so the embedded page always shows the latest published content
-  (no more stale iframes that look like "cookies"); the server list and remote
-  content refresh live with a resilient fetch chain (token → public API → raw
-  CDN → disk cache) that works even with an expired token; update checks are
-  authenticated for reliable release detection; and the Home hero can hand the
-  latest release download straight to the in-app updater.
-- **Orbit Launcher Beta v2** — new minimal create-Space wizard, cleaner Space
-  cards, rebuilt mod preview window, and responsive layout for all window sizes.
+Releases are built by GitHub Actions for Windows (x64), macOS (Apple Silicon) and Linux (x64) whenever a `v*` tag is pushed. Each release publishes signed updater artifacts (`latest.json` and signatures) so installed apps update themselves to that tag automatically.
 
-## Remote content (web/ folder)
+## Versioning
 
-Orbit ships with **no bundled news/server data** — everything remote comes from
-the public **unmid/OL-updater** repo (served on GitHub Pages):
+The workspace shares a single version, defined in the root `Cargo.toml` under `[workspace.package]`. The member crate in `src-tauri` inherits it with `version.workspace = true`; `package.json` and `src-tauri/tauri.conf.json` carry the same version for the frontend and the bundler.
 
-| File | Purpose | Where it shows up |
-| --- | --- | --- |
-| `web/ol.html` | Home-page hero (slider + latest-release slide) | Home tab (embedded iframe) |
-| `web/olserverlist.json` | Server browser list | Servers tab |
+## Code signing
 
-Publishing an edit takes one push:
+This program uses free code signing provided by [SignPath.io](https://signpath.io), and a certificate by the SignPath Foundation. We thank them very much for their contributions to OSS software.
 
-```bat
-git clone https://github.com/unmid/OL-updater.git
-copy /Y web\ol.html web\olserverlist.json <clone>\
-cd <clone>
-git add -A
-git commit -m "update home page / server list"
-git push
+Updater packages are additionally signed with a minisign key. The private key exists only as encrypted GitHub Actions secrets (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`); the public key is embedded in the app and every update is verified before installation.
+
+## Project structure
+
 ```
-
-The launcher fetches these through the GitHub Contents API (no CDN staleness),
-falls back to `raw.githubusercontent.com` with cache-busting, and only then to a
-local disk copy — so edited content appears without reinstalling the app. The
-iframes on the Home tab append a fresh `?v=` timestamp on every visit, so the
-webview never replays a cached page either.
-
-> The old baked-in updater token was expired, which silently froze the server
-> list and home page on their disk caches. v3.0.0 no longer *requires* a token:
-> the repos are public, so fetching works unauthenticated (a token in
-> `src-tauri/secrets.env` still raises rate limits).
+├── Cargo.toml            # workspace root — single shared version
+├── package.json          # frontend (React 19, Vite)
+├── src/                  # React UI — pages, components, design system
+├── public/               # fonts, icons, wallpapers, music
+└── src-tauri/            # Rust backend — installs, launch, accounts, content
+    ├── src/              # commands and services
+    ├── icons/            # app icons (generated from the Orbit mark)
+    └── tauri.conf.json   # window, bundle and updater configuration
+```
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
-## Privacy and attribution
-
-Orbit Launcher is not an official Minecraft product and is not approved by or
-associated with Mojang, Microsoft, Modrinth, CurseForge, Fabric, Quilt, Forge,
-NeoForge, or OptiFine. Minecraft is a trademark of Mojang AB / Microsoft. The
-launcher does not redistribute Minecraft game files; it downloads them from the
-appropriate upstream services when needed.
+MIT

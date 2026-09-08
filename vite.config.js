@@ -40,7 +40,13 @@ export default defineConfig({
   base: './',
   plugins: [react(), musicManifestPlugin()],
   clearScreen: false,
-  server: { port: 5173, strictPort: true },
+  server: {
+    port: 5173,
+    strictPort: true,
+    // Cargo writes into src-tauri/target during `tauri dev`; watching those
+    // files makes chokidar crash with EBUSY on Windows and kills the server.
+    watch: { ignored: ['**/src-tauri/target/**', '**/release/**', '**/dist/**'] },
+  },
   build: {
     target: 'es2021',
     minify: 'oxc',

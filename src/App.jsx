@@ -1,38 +1,33 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { api, avatarUrl } from './api.js'
-import Splash from './Splash.jsx'
-import { IconMusic, IconBack, IconPlay, IconUser, AppIcon, SpaceIcon } from './icons.jsx'
+import { IconMusic, IconPlay, AppIcon, IconSun, IconMoon } from './icons.jsx'
 
 // Each page lives in its own chunk; they're all prefetched right after the
 // first paint, so switching pages later is instant and seamless.
 const HomePage = lazy(() => import('./HomePage.jsx'))
-const SpacesPage = lazy(() => import('./SpacesPage.jsx'))
+const LibraryPage = lazy(() => import('./LibraryPage.jsx'))
 const ServersPage = lazy(() => import('./ServersPage.jsx'))
-const ProfilePage = lazy(() => import('./ProfilePage.jsx'))
-const OptimizePage = lazy(() => import('./OptimizePage.jsx'))
-const SettingsPage = lazy(() => import('./SettingsPage.jsx'))
-const NewsPage = lazy(() => import('./NewsPage.jsx'))
-const UpdatePage = lazy(() => import('./UpdatePage.jsx'))
 const AccountPage = lazy(() => import('./AccountPage.jsx'))
+const SettingsPage = lazy(() => import('./SettingsPage.jsx'))
 const SpaceWizard = lazy(() => import('./SpaceWizard.jsx'))
-const LogsPage = lazy(() => import('./LogsPage.jsx'))
 
-const NAV_ICON = (name) => function NavIcon({ size = 21 }) {
-  return <AppIcon name={name} size={size} />
-}
-
-const PAGES = [
-  { id: 'home', label: 'Home', icon: NAV_ICON('home') },
-  { id: 'spaces', label: 'Spaces', icon: NAV_ICON('grid') },
-  { id: 'servers', label: 'Servers', icon: NAV_ICON('list') },
-  { id: 'profile', label: 'Profile', icon: NAV_ICON('user') },
-  { id: 'optimize', label: 'Optimize', icon: NAV_ICON('boost') },
-  { id: 'news', label: 'News', icon: NAV_ICON('chat') },
-  { id: 'settings', label: 'Settings', icon: NAV_ICON('tune') },
-  { id: 'update', label: 'Update', icon: NAV_ICON('update-available') },
-  { id: 'account', label: 'Account', icon: NAV_ICON('contacts') },
-  { id: 'logs', label: 'Log', icon: NAV_ICON('process') },
+const NAV = [
+  { section: 'Play' },
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'library', label: 'Library', icon: 'grid' },
+  { id: 'servers', label: 'Servers', icon: 'list' },
+  { section: 'You' },
+  { id: 'account', label: 'Account', icon: 'user' },
+  { id: 'settings', label: 'Settings', icon: 'tune' },
 ]
+
+const PAGE_TITLES = {
+  home: 'Home',
+  library: 'Library',
+  servers: 'Servers',
+  account: 'Account',
+  settings: 'Settings',
+}
 
 // Music tracks are discovered automatically: vite.config.js scans
 // public/musics and writes musics-manifest.json (dev + every build), so any
@@ -50,46 +45,30 @@ async function loadMusicList() {
   return FALLBACK_MUSIC
 }
 const BROWSER_SETTINGS = {
-  ramGb: 4, showSnapshots: false, skipIntro: true, closeOnPlay: true,
+  ramGb: 4, closeOnPlay: true,
   extraJvmArgs: '', activeAccountId: null, theme: 'dark', accent: '#f26a3c',
-  music: false, animations: true, wallpapers: true, optimizeMode: 'off',
+  music: false, musicVolume: 0.35, animations: true, wallpapers: true, optimizeMode: 'off',
   optimizeAuto: false, optimizeRenderDistance: 10, selectedSpaceId: null,
 }
 const DESKTOP_RUNTIME = typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__)
-
-/** Paper confetti burst — call on happy events (game started, space created). */
-export function confetti() {
-  if (document.documentElement.classList.contains('no-anim')) return
-  const cols = ['#f26a3c', '#3ea1d9', '#eeb64d', '#ef8fa5', '#71b06c', '#8d7ae0']
-  for (let i = 0; i < 28; i++) {
-    const c = document.createElement('div')
-    c.className = 'confetti-piece'
-    c.style.left = 2 + Math.random() * 96 + 'vw'
-    c.style.background = cols[i % cols.length]
-    c.style.borderRadius = Math.random() > 0.5 ? '50%' : '3px'
-    c.style.animationDuration = 1 + Math.random() * 0.9 + 's'
-    c.style.transform = `rotate(${Math.random() * 360}deg)`
-    document.body.appendChild(c)
-    setTimeout(() => c.remove(), 2000)
-  }
-}
 
 const PALE_ACCENTS = ['#f26a3c', '#3ea1d9', '#eeb64d', '#ef8fa5', '#71b06c', '#8d7ae0', '#e0503a', '#4fc4b5']
 
 export default function App() {
   const [ready, setReady] = useState(false)
-  const [showSplash, setShowSplash] = useState(false)
   const [settings, setSettings] = useState(null)
   const [spaces, setSpaces] = useState([])
   const [accounts, setAccounts] = useState([])
   const [page, setPage] = useState('home')
-  const [prevPage, setPrevPage] = useState(null)
   const [progress, setProgress] = useState({})
   const [wizardState, setWizardState] = useState(null)
   const [toasts, setToasts] = useState([])
   const toastId = useRef(0)
   const musicRef = useRef(null)
   const musicListRef = useRef(FALLBACK_MUSIC)
+  const musicQueueRef = useRef([])
+  const lastTrackRef = useRef(null)
+  const [nowPlaying, setNowPlaying] = useState('')
   const speedRef = useRef({})
 
   const notify = useCallback((message, kind = 'ok') => {
@@ -110,17 +89,19 @@ export default function App() {
     try { setSettings(await api.getSettings()) } catch (e) { console.error(e) }
   }, [])
 
+  // Pages can carry a sub-target: 'settings:updates' opens Settings on a tab.
   const navigate = useCallback((to) => {
-    setPage((cur) => {
-      if (cur !== to) setPrevPage(cur)
-      return to
-    })
+    const [pageId, sub] = String(to).split(':')
+    setPage(pageId)
+    if (sub) setTimeout(() => window.dispatchEvent(new CustomEvent('orbit-subnav', { detail: sub })), 0)
   }, [])
 
-  const goBack = useCallback(() => {
-    setPage(prevPage || 'home')
-    setPrevPage(null)
-  }, [prevPage])
+  // Pages can request navigation (home banners, empty states).
+  useEffect(() => {
+    const onNav = (e) => { if (e.detail) navigate(e.detail) }
+    window.addEventListener('orbit-nav', onNav)
+    return () => window.removeEventListener('orbit-nav', onNav)
+  }, [navigate])
 
   // ---- initial load ------------------------------------------------------
   useEffect(() => {
@@ -128,14 +109,12 @@ export default function App() {
       try {
         const s = await api.getSettings()
         setSettings(s)
-        setShowSplash(!s.skipIntro)
         loadMusicList().then((list) => { musicListRef.current = list }).catch(() => {})
         await Promise.all([refreshSpaces(), refreshAccounts()])
       } catch (e) {
         // The Vite preview has no Tauri bridge. Keep it useful for visual QA
         // and web previews without changing the desktop default behaviour.
         setSettings(BROWSER_SETTINGS)
-        setShowSplash(false)
         if (DESKTOP_RUNTIME) notify('Something went wrong starting up: ' + e, 'error')
       } finally {
         setReady(true)
@@ -147,29 +126,43 @@ export default function App() {
   // lives in its own module, but navigation no longer flashes a loading view.
   useEffect(() => {
     if (!ready) return
-    const warm = () => {
-      import('./HomePage.jsx')
-      import('./SpacesPage.jsx')
-      import('./ServersPage.jsx')
-      import('./ProfilePage.jsx')
-      import('./OptimizePage.jsx')
-      import('./SettingsPage.jsx')
-      import('./NewsPage.jsx')
-      import('./UpdatePage.jsx')
-      import('./AccountPage.jsx')
-      import('./SpaceWizard.jsx')
-      import('./ModsBrowser.jsx')
-      import('./LogsPage.jsx')
-    }
-    warm()
+    import('./HomePage.jsx')
+    import('./LibraryPage.jsx')
+    import('./ServersPage.jsx')
+    import('./AccountPage.jsx')
+    import('./SettingsPage.jsx')
+    import('./SpaceWizard.jsx')
+    import('./ModsBrowser.jsx')
   }, [ready])
+
+  // ---- automatic updates ---------------------------------------------------
+  // Releases are published to GitHub as version tags; the updater applies the
+  // latest release in place so users never reinstall the app manually.
+  useEffect(() => {
+    if (!ready || !DESKTOP_RUNTIME) return undefined
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { check } = await import('@tauri-apps/plugin-updater')
+        const update = await check()
+        if (!update || cancelled) return
+        notify(`Update available — downloading Orbit Launcher v${update.version}…`)
+        await update.downloadAndInstall()
+        if (cancelled) return
+        notify(`Updated to v${update.version} — restarting Orbit Launcher…`)
+        const { relaunch } = await import('@tauri-apps/plugin-process')
+        await relaunch()
+      } catch { /* offline, dev build or unsigned bundle — stay silent */ }
+    })()
+    return () => { cancelled = true }
+  }, [ready]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- theming -----------------------------------------------------------
   useEffect(() => {
     if (!settings) return
     const accent = settings.accent || '#f26a3c'
     if (!PALE_ACCENTS.includes(accent)) {
-      // migrate v2 accents to the paper palette (closest by hue distance in hex)
+      // migrate old accents to the current palette (closest by hue distance in hex)
       const migrated = migrateAccent(accent)
       document.documentElement.style.setProperty('--accent', migrated.hex)
       document.documentElement.style.setProperty('--accent-ink', migrated.ink)
@@ -178,35 +171,74 @@ export default function App() {
       document.documentElement.style.setProperty('--accent-ink', accentInk(accent))
     }
     document.documentElement.classList.toggle('no-anim', settings.animations === false)
-    document.body.classList.toggle('wallpapers-off', settings.wallpapers === false)
     document.body.dataset.theme = settings.theme === 'light' ? 'light' : 'dark'
-  }, [settings?.accent, settings?.animations, settings?.wallpapers, settings?.theme, settings])
+  }, [settings?.accent, settings?.animations, settings?.theme, settings])
 
   // ---- music ---------------------------------------------------------------
+  // A rotating station, not a single looping track: tracks are shuffled, and
+  // when one ends the player crossfades into another random track.
+  const musicVolume = () => {
+    const v = Number(settings?.music_volume)
+    return Number.isFinite(v) && v > 0 ? Math.min(1, v) : 0.35
+  }
+
   useEffect(() => {
     if (!settings) return
-    if (settings.music === false || showSplash) {
+    if (settings.music === false) {
       stopMusic()
       return
     }
-    startMusic()
-    return stopMusic
-  }, [settings?.music, showSplash]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!musicRef.current) startMusic()
+  }, [settings?.music]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Live volume slider — retarget whatever is playing right now.
+  useEffect(() => {
+    if (musicRef.current && settings?.music !== false) fade(musicRef.current, musicVolume(), 300)
+  }, [settings?.music_volume]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function shuffled(list) {
+    const a = [...list]
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[a[i], a[j]] = [a[j], a[i]]
+    }
+    return a
+  }
+  function refillQueue() {
+    let list = shuffled(musicListRef.current.length ? musicListRef.current : FALLBACK_MUSIC)
+    // Avoid hearing the same track twice back-to-back when possible.
+    if (list.length > 1 && lastTrackRef.current && list[0] === lastTrackRef.current) {
+      ;[list[0], list[list.length - 1]] = [list[list.length - 1], list[0]]
+    }
+    musicQueueRef.current = list
+  }
   function startMusic() {
     if (musicRef.current) return
-    const list = musicListRef.current?.length ? musicListRef.current : FALLBACK_MUSIC
-    const file = list[Math.floor(Math.random() * list.length)]
+    refillQueue()
+    playNext()
+  }
+  function playNext() {
+    if (!musicQueueRef.current.length) refillQueue()
+    const file = musicQueueRef.current.shift()
+    lastTrackRef.current = file
     const audio = new Audio(`./musics/${encodeURIComponent(file)}`)
-    audio.loop = true
     audio.volume = 0
+    audio.onended = () => { if (musicRef.current === audio) playNext() }
     audio.play().catch(() => {})
-    fade(audio, 0.35, 1200)
+    fade(audio, musicVolume(), 1200)
+    setNowPlaying(file.replace(/\.[^.]+$/, ''))
+    const prev = musicRef.current
+    if (prev) fade(prev, 0, 700, () => { prev.onended = null; prev.pause(); prev.src = '' })
     musicRef.current = audio
+  }
+  function skipMusic() {
+    if (!settings || settings.music === false) return
+    playNext()
   }
   function stopMusic() {
     const a = musicRef.current
     if (!a) return
+    a.onended = null
     musicRef.current = null
     fade(a, 0, 600, () => { a.pause(); a.src = '' })
   }
@@ -214,7 +246,7 @@ export default function App() {
     if (musicRef.current) fade(musicRef.current, 0, 500)
   }
   function unduckMusic() {
-    if (musicRef.current && settings?.music !== false) fade(musicRef.current, 0.35, 1000)
+    if (musicRef.current && settings?.music !== false) fade(musicRef.current, musicVolume(), 1000)
   }
   function fade(a, target, ms, done) {
     const start = a.volume
@@ -247,6 +279,18 @@ export default function App() {
         speedRef.current[p.spaceId] = { t: now, done: p.done, speedBps: p.speedBps, etaSec: p.etaSec }
       }
       if (p.stage === 'log') return
+      if (p.stage === 'ready') {
+        // A modpack finished installing in the background.
+        delete speedRef.current[p.spaceId]
+        setProgress((prev) => {
+          const copy = { ...prev }
+          delete copy[p.spaceId]
+          return copy
+        })
+        notify(p.message || 'Space is ready', 'ok')
+        refreshSpaces()
+        return
+      }
       setProgress((prev) => {
         const next = { ...prev }
         if (p.stage === 'running') {
@@ -282,7 +326,6 @@ export default function App() {
       if (p.stage === 'error') notify(p.message, 'error')
       if (p.stage === 'running') {
         notify('Game started — good luck!', 'ok')
-        confetti()
         musicCtl.current.duck()
         refreshSpaces()
         if (settings?.closeOnPlay !== false) {
@@ -349,8 +392,14 @@ export default function App() {
     saveSettings(s)
   }
 
+  // A modpack just became a new Space — select it so the user lands on it.
+  const onSpaceCreated = useCallback((spaceId) => {
+    refreshSpaces()
+    if (spaceId) selectSpace(spaceId)
+    setWizardState(null)
+  }, [refreshSpaces, selectSpace]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!ready) return <div className="boot" />
-  if (showSplash) return <Splash onDone={() => setShowSplash(false)} />
 
   const pageProps = {
     settings, spaces, accounts, activeAccount, progress,
@@ -361,76 +410,87 @@ export default function App() {
   return (
     <div className="app">
       <aside className="sidenav">
-        <div className="sidenav-brand" onClick={() => navigate('home')} title="Orbit Launcher (beta)">
+        <div className="sidenav-brand" onClick={() => navigate('home')} title="Orbit Launcher">
           <span className="brand-badge"><img src="./icons/logo.png" width="26" height="26" alt="Orbit" draggable={false} /></span>
-          <span className="brand-word">Orbit Launcher (beta)</span>
+          <span className="brand-word">Orbit</span>
         </div>
         <nav className="sidenav-nav">
-          {PAGES.map((pg) => (
+          {NAV.map((item, i) => item.section ? (
+            <div key={`s${i}`} className="nav-section">{item.section}</div>
+          ) : (
             <button
-              key={pg.id}
-              className={`nav-item ${page === pg.id ? 'active' : ''}`}
-              onClick={() => navigate(pg.id)}
-              title={pg.label}
+              key={item.id}
+              className={`nav-item ${page === item.id ? 'active' : ''}`}
+              onClick={() => navigate(item.id)}
+              title={item.label}
             >
-              <pg.icon size={21} />
-              <span>{pg.label}</span>
+              <span className="nav-ic"><AppIcon name={item.icon} size={19} /></span>
+              <span>{item.label}</span>
             </button>
           ))}
         </nav>
         <div className="sidenav-foot">
-          <div className="sidenav-quick-actions">
-            <button className="sidenav-action" onClick={toggleTheme} title={settings.theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
-              <AppIcon name="theme" size={20} />
-              <span>{settings.theme === 'light' ? 'Dark mode' : 'Light mode'}</span>
+          {settings.music !== false && nowPlaying && (
+            <div className="now-playing" title={nowPlaying}>
+              <IconMusic size={14} />
+              <span className="now-playing-name">{nowPlaying}</span>
+              <button className="np-skip" onClick={skipMusic} title="Next track">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M5 4l10 8-10 8V4zm12 0h3v16h-3z" /></svg>
+              </button>
+            </div>
+          )}
+          <div className="sidenav-mini-actions">
+            <button
+              className="mini-action"
+              onClick={toggleTheme}
+              title={settings.theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+            >
+              {settings.theme === 'light' ? <IconMoon size={16} /> : <IconSun size={16} />}
+              <span>{settings.theme === 'light' ? 'Dark' : 'Light'}</span>
             </button>
-            <button className={`sidenav-action ${settings.music === false ? '' : 'selected'}`} onClick={toggleMusic} title="Background music">
-              <IconMusic size={18} />
+            <button
+              className={`mini-action ${settings.music === false ? '' : 'on'}`}
+              onClick={toggleMusic}
+              title="Background music"
+            >
+              <IconMusic size={15} />
               <span>Music</span>
             </button>
           </div>
+          <button className="sidenav-account" onClick={() => navigate('account')} title="Accounts">
+            {activeAccount ? (
+              <>
+                <img src={avatarUrl(activeAccount.username, 60)} alt="" draggable={false} />
+                <span className="sa-text" style={{ flex: 1, minWidth: 0 }}>
+                  <span className="sa-name">{activeAccount.username}</span>
+                  <span className="sa-sub">{activeAccount.kind === 'microsoft' ? 'Microsoft' : 'Offline'}</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <img src="./icons/app/user.png" width={30} height={30} alt="" draggable={false} />
+                <span className="sa-text" style={{ flex: 1, minWidth: 0 }}>
+                  <span className="sa-name">Add account</span>
+                  <span className="sa-sub">Required to play</span>
+                </span>
+              </>
+            )}
+          </button>
         </div>
       </aside>
 
       <div className="main-col">
-        <header className="topstrip" data-tauri-drag-region>
-          {prevPage && page !== 'home' ? (
-            <button className="btn btn-small btn-ghost back-btn" onClick={goBack}>
-              <IconBack size={15} /> Back
-            </button>
-          ) : <span className="topstrip-drag-space" />}
-          <span className="topstrip-spacer" />
-          <button className="account-chip" onClick={() => navigate('account')} title="Switch account">
-            {activeAccount ? (
-              <>
-                <img src={avatarUrl(activeAccount.username, 40)} alt="" draggable={false} />
-                <span>{activeAccount.username}</span>
-              </>
-            ) : (
-              <>
-                <IconUser size={17} />
-                <span>Add account</span>
-              </>
-            )}
-          </button>
-        </header>
+        <TitleBar title={PAGE_TITLES[page] || 'Orbit'} />
 
         <main className="page-wrap">
           <Suspense fallback={<div className="page-loading"><span className="mini-spinner" /></div>}>
             {page === 'home' && <HomePage {...pageProps} selectedSpace={selectedSpace} />}
-            {page === 'spaces' && <SpacesPage {...pageProps} />}
+            {page === 'library' && <LibraryPage {...pageProps} />}
             {page === 'servers' && <ServersPage {...pageProps} />}
-            {page === 'profile' && <ProfilePage {...pageProps} />}
-            {page === 'optimize' && <OptimizePage {...pageProps} />}
-            {page === 'settings' && <SettingsPage {...pageProps} />}
-            {page === 'news' && <NewsPage {...pageProps} />}
-            {page === 'update' && <UpdatePage {...pageProps} />}
             {page === 'account' && <AccountPage {...pageProps} />}
-            {page === 'logs' && <LogsPage {...pageProps} />}
+            {page === 'settings' && <SettingsPage {...pageProps} />}
           </Suspense>
         </main>
-
-        {page === 'home' && <BottomBar spaces={spaces} selected={selectedSpace} onSelect={selectSpace} onPlay={() => selectedSpace && play(selectedSpace)} progress={selectedSpace ? progress[selectedSpace.id] : null} />}
       </div>
 
       {wizardState && (
@@ -440,6 +500,7 @@ export default function App() {
             settings={settings}
             onClose={() => setWizardState(null)}
             onSaved={refreshSpaces}
+            onSpaceCreated={onSpaceCreated}
             notify={notify}
           />
         </Suspense>
@@ -451,6 +512,64 @@ export default function App() {
         ))}
       </div>
     </div>
+  )
+}
+
+/* Frameless window titlebar: drag region + min / max / close. */
+function TitleBar({ title }) {
+  const winRef = useRef(null)
+  const [maximized, setMaximized] = useState(false)
+
+  const win = async () => {
+    if (!DESKTOP_RUNTIME) return null
+    if (!winRef.current) {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      winRef.current = getCurrentWindow()
+    }
+    return winRef.current
+  }
+
+  useEffect(() => {
+    let unlisten = null
+    win().then(async (w) => {
+      if (!w) return
+      setMaximized(await w.isMaximized().catch(() => false))
+      unlisten = await w.onResized(() => w.isMaximized().then(setMaximized).catch(() => {}))
+    }).catch(() => {})
+    return () => { if (unlisten) unlisten() }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleMax = async () => { const w = await win(); if (w) w.toggleMaximize().catch(() => {}) }
+  const minimize = async () => { const w = await win(); if (w) w.minimize().catch(() => {}) }
+  const close = async () => { const w = await win(); if (w) w.close().catch(() => {}) }
+
+  return (
+    <header className="titlebar">
+      <span className="titlebar-title">
+        <IconPlay size={12} style={{ color: 'var(--accent)' }} />
+        {title}
+      </span>
+      <div
+        className="titlebar-drag"
+        data-tauri-drag-region
+        onDoubleClick={toggleMax}
+      />
+      <div className="win-controls">
+        <button className="win-btn" onClick={minimize} title="Minimize" aria-label="Minimize">
+          <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 6h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
+        <button className="win-btn" onClick={toggleMax} title={maximized ? 'Restore' : 'Maximize'} aria-label="Maximize">
+          {maximized ? (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="3.2" y="1.2" width="7.6" height="7.6" rx="1.5" /><path d="M1.2 9V4.4c0-1 .8-1.8 1.8-1.8h1" /></svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5" /></svg>
+          )}
+        </button>
+        <button className="win-btn win-close" onClick={close} title="Close" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1.5 1.5l9 9m0-9l-9 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
+      </div>
+    </header>
   )
 }
 
@@ -469,67 +588,6 @@ function migrateAccent(old) {
   }
   const hex = table[old] || '#f26a3c'
   return { hex, ink: accentInk(hex) }
-}
-
-function BottomBar({ spaces, selected, onSelect, onPlay, progress }) {
-  const [open, setOpen] = useState(false)
-  const busy = progress && ['loader', 'version', 'files', 'java', 'launching'].includes(progress.stage)
-  const started = progress?.stage === 'running'
-  const showProgress = busy || started
-  const pct = progress && progress.total ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : null
-
-  return (
-    <footer className="bottombar">
-      <div className={`space-dropup ${open ? 'open' : ''}`}>
-        {open && (
-          <div className="space-dropup-list">
-            {spaces.length === 0 && <div className="dropup-empty">No Spaces yet — create one first</div>}
-            {spaces.map((s) => (
-              <button key={s.id} className={`dropup-item ${selected?.id === s.id ? 'active' : ''}`} onClick={() => { onSelect(s.id); setOpen(false) }}>
-                <span className="dropup-icon" style={{ background: s.color }}><SpaceIcon name={s.icon} size={18} /></span>
-                <span className="dropup-name">{s.name}</span>
-                <span className="dropup-meta">{s.mcVersion}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        <button className="dropup-current" onClick={() => setOpen((o) => !o)}>
-          {selected ? (
-            <>
-              <span className="dropup-icon" style={{ background: selected.color }}><SpaceIcon name={selected.icon} size={20} /></span>
-              <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
-                <span className="dropup-name">{selected.name}</span>
-                <span className="dropup-meta">{selected.mcVersion} · {selected.loader}</span>
-              </span>
-            </>
-          ) : (
-            <span className="dropup-meta">No Space selected</span>
-          )}
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`dropup-arrow ${open ? 'up' : ''}`}><path d="m6 15 6-6 6 6" /></svg>
-        </button>
-      </div>
-
-      <button className={`mega-play ${showProgress ? 'mega-play-busy' : ''} ${started ? 'mega-play-success' : ''}`} disabled={!selected || busy || started} onClick={onPlay}>
-        {showProgress ? (
-          <div className="mega-play-loading" role="status" aria-live="polite">
-            <div className="mega-play-row">
-              <span className="mega-play-stage">{stageText(progress)}</span>
-              {pct != null && <span className="mega-play-pct">{pct}%</span>}
-            </div>
-            <div className="mega-play-bar">
-              <div className="mega-play-bar-fill" style={started ? { width: '100%' } : (pct != null ? { width: pct + '%' } : undefined)} data-ind={started || pct != null ? '0' : '1'} />
-            </div>
-            <span className="mega-play-sub">{progressDetail(progress)}</span>
-          </div>
-        ) : (
-          <>
-            <IconPlay size={26} />
-            <span>PLAY</span>
-          </>
-        )}
-      </button>
-    </footer>
-  )
 }
 
 function fmtMb(bytes) {
@@ -555,7 +613,7 @@ export function progressDetail(p) {
   return p.message || ''
 }
 
-function stageText(p) {
+export function stageText(p) {
   if (!p) return 'Preparing…'
   switch (p.stage) {
     case 'loader': return 'Setting up the game…'
@@ -563,7 +621,7 @@ function stageText(p) {
     case 'launching': return 'Launching Minecraft…'
     case 'version': return 'Reading version info…'
     case 'files': return 'Downloading game files'
-    case 'running': return 'Minecraft started'
+    case 'running': return 'Minecraft is running'
     default: return p.message || 'Working…'
   }
 }

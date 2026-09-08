@@ -157,6 +157,43 @@ pub async fn fetch_bytes_b64(http: &reqwest::Client, url: &str) -> Result<String
     Ok(base64_encode(&bytes))
 }
 
+// ---------------------------------------------------------------------------
+// CurseForge API helpers (shared by content search + modpack installs)
+
+pub async fn cf_api_get(http: &reqwest::Client, url: &str) -> Result<serde_json::Value, String> {
+    if CF_KEY.is_empty() {
+        return Err("CurseForge is not configured in this build".into());
+    }
+    http.get(url)
+        .header("x-api-key", CF_KEY)
+        .send()
+        .await
+        .map_err(|e| format!("CurseForge unreachable: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("CurseForge error: {e}"))?
+        .json()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Resolve a file's direct download URL through the API when the listing did
+/// not include one.
+pub async fn cf_download_url(
+    http: &reqwest::Client,
+    project_id: &str,
+    file_id: u64,
+) -> Result<String, String> {
+    let v: serde_json::Value = cf_api_get(
+        http,
+        &format!("https://api.curseforge.com/v1/mods/{project_id}/files/{file_id}/download-url"),
+    )
+    .await?;
+    v.get("data")
+        .and_then(|x| x.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| "CurseForge blocked this file's download".into())
+}
+
 const B64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 pub fn base64_encode(data: &[u8]) -> String {

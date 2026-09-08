@@ -16,9 +16,12 @@ pub struct SpaceMod {
     pub version_number: String,
     #[serde(default)]
     pub file_name: String,
-    /// mod | resourcepack | shader
+    /// mod | resourcepack | shader | datapack
     #[serde(default = "default_kind")]
     pub kind: String,
+    /// Datapacks live per-world (saves/<world>/datapacks); None = space library.
+    #[serde(default)]
+    pub world: Option<String>,
 }
 
 fn default_kind() -> String {
@@ -112,7 +115,7 @@ pub fn duplicate_space(root: &PathBuf, id: &str) -> Result<Space, String> {
     copy.last_played = None;
 
     // Copy the small stuff (mods, configs, resource packs) but not heavy worlds.
-    for sub in ["mods", "config", "resourcepacks", "shaderpacks"] {
+    for sub in ["mods", "config", "resourcepacks", "shaderpacks", "datapacks"] {
         let from = space_dir(root, &src.id).join(sub);
         let to = space_dir(root, &copy.id).join(sub);
         if from.exists() {
@@ -210,7 +213,7 @@ pub fn export_space_json(space: &Space) -> ExportedSpace {
                     project_id: id,
                     title: m.title.chars().take(80).collect(),
                     kind: match m.kind.as_str() {
-                        "resourcepack" | "shader" => m.kind.clone(),
+                        "resourcepack" | "shader" | "datapack" => m.kind.clone(),
                         _ => "mod".to_string(),
                     },
                 }
@@ -252,7 +255,7 @@ pub fn validate_import(raw: &str) -> Result<ExportedSpace, String> {
         if !["modrinth", "curseforge", ""].contains(&m.source.as_str()) {
             return Err("Unknown content source".into());
         }
-        if !["mod", "resourcepack", "shader", ""].contains(&m.kind.as_str()) {
+        if !["mod", "resourcepack", "shader", "datapack", ""].contains(&m.kind.as_str()) {
             return Err("Unknown content kind".into());
         }
         if m.project_id.len() > 64

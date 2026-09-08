@@ -16,8 +16,6 @@ pub struct Settings {
     pub ram_gb: u32,
     #[serde(default)]
     pub show_snapshots: bool,
-    #[serde(default)]
-    pub skip_intro: bool,
     /// Hide the launcher window while the game runs (on by default).
     #[serde(default = "default_true")]
     pub close_on_play: bool,
@@ -36,6 +34,9 @@ pub struct Settings {
     /// Background music from the musics folder.
     #[serde(default = "default_true")]
     pub music: bool,
+    /// Music volume 0.0 - 1.0.
+    #[serde(default = "default_music_volume")]
+    pub music_volume: f32,
     /// UI animations (turn off for a snappier plain UI).
     #[serde(default = "default_true")]
     pub animations: bool,
@@ -65,6 +66,9 @@ pub struct Settings {
 fn default_accent() -> String {
     "#f26a3c".into()
 }
+fn default_music_volume() -> f32 {
+    0.35
+}
 fn default_theme() -> String {
     "dark".into()
 }
@@ -80,13 +84,13 @@ impl Default for Settings {
         Self {
             ram_gb: default_ram(),
             show_snapshots: false,
-            skip_intro: false,
             close_on_play: true,
             extra_jvm_args: String::new(),
             active_account_id: None,
             theme: default_theme(),
             accent: default_accent(),
             music: true,
+            music_volume: default_music_volume(),
             animations: true,
             wallpapers: true,
             optimize_mode: "off".into(),

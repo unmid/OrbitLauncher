@@ -38,13 +38,39 @@ pub struct ContentDetails {
     pub game_versions: Vec<String>,
 }
 
-/// mod | resourcepack | shader
+/// mod | resourcepack | shader | datapack
 pub fn kind_folder(kind: &str) -> &'static str {
     match kind {
         "resourcepack" => "resourcepacks",
         "shader" => "shaderpacks",
+        "datapack" => "datapacks",
         _ => "mods",
     }
+}
+
+/// The folder a piece of content lives in. Datapacks are special: they are
+/// per-world (`saves/<world>/datapacks`) unless parked in the Space library.
+pub fn content_dir(root: &PathBuf, space_id: &str, kind: &str, world: Option<&str>) -> PathBuf {
+    if kind == "datapack" {
+        match world.map(str::trim).filter(|w| !w.is_empty()) {
+            Some(w) => crate::spaces::space_dir(root, space_id)
+                .join("saves")
+                .join(sanitize_world_name(w))
+                .join("datapacks"),
+            None => crate::spaces::space_dir(root, space_id).join(kind_folder(kind)),
+        }
+    } else if kind == "mod" {
+        space_mods_dir(root, space_id)
+    } else {
+        space_dir(root, space_id).join(kind_folder(kind))
+    }
+}
+
+/// World folder names come from disk listings, but treat them as untrusted.
+fn sanitize_world_name(w: &str) -> String {
+    w.chars()
+        .filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -81,8 +107,9 @@ async fn mr_search(
     }
     // Loader categories: mods are tagged with the loader name, but shader packs
     // are tagged "iris"/"optifine" on Modrinth — filtering shaders by
-    // "categories:fabric" always returned zero results.
-    if !loader.is_empty() && kind != "resourcepack" {
+    // "categories:fabric" always returned zero results. Packs and datapacks
+    // are likewise not reliably loader-tagged, so no loader facet for them.
+    if !loader.is_empty() && !kind_ignores_loader(kind) {
         if kind == "shader" {
             let cats: Vec<String> = if loader == "optifine" {
                 vec!["categories:optifine".to_string()]
@@ -160,8 +187,16 @@ fn cf_class(kind: &str) -> u32 {
     match kind {
         "resourcepack" => 12,
         "shader" => 6552,
+        "datapack" => 6947,
+        "modpack" => 4471,
         _ => 6,
     }
+}
+
+/// Kinds that must never be filtered by mod loader — packs/datapacks are not
+/// loader-tagged the way mods are, and asking for a loader returns nothing.
+pub fn kind_ignores_loader(kind: &str) -> bool {
+    matches!(kind, "resourcepack" | "datapack" | "modpack")
 }
 
 fn cf_loader(loader: &str) -> Option<u32> {
@@ -172,6 +207,41 @@ fn cf_loader(loader: &str) -> Option<u32> {
         "neoforge" => Some(6),
         _ => None,
     }
+}
+
+/// GET with one rate-limit-aware retry. Returns (status, json-or-error-text).
+async fn cf_get(http: &reqwest::Client, url: &str, query: &[(&str, String)]) -> Result<Value, String> {
+    for attempt in 1..=2 {
+        let resp = http
+            .get(url)
+            .header("x-api-key", CF_KEY)
+            .query(query)
+            .send()
+            .await
+            .map_err(|e| format!("CurseForge unreachable: {e}"))?;
+        let status = resp.status();
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS && attempt == 1 {
+            // Honor Retry-After when sane; otherwise wait briefly and retry once.
+            let wait = resp
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .unwrap_or(2)
+                .clamp(1, 5);
+            tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+            continue;
+        }
+        if !status.is_success() {
+            return Err(match status.as_u16() {
+                403 => "CurseForge rejected this build's API key".to_string(),
+                429 => "CurseForge is rate-limiting us — try again in a moment".to_string(),
+                _ => format!("CurseForge error {status}"),
+            });
+        }
+        return resp.json::<Value>().await.map_err(|e| e.to_string());
+    }
+    Err("CurseForge is rate-limiting us — try again in a moment".into())
 }
 
 async fn cf_search(
@@ -185,43 +255,62 @@ async fn cf_search(
     if CF_KEY.is_empty() {
         return Err("CurseForge is not configured in this build".into());
     }
-    let mut q: Vec<(&str, String)> = vec![
-        ("gameId", "432".into()),
-        ("classId", cf_class(kind).to_string()),
-        ("searchFilter", query.to_string()),
-        ("sortField", "2".into()), // popularity
-        ("sortOrder", "desc".into()),
-        ("pageSize", "24".into()),
-        ("index", offset.to_string()),
-    ];
-    if !mc_version.is_empty() {
-        q.push(("gameVersion", mc_version.into()));
-    }
-    if kind != "resourcepack" {
-        if let Some(l) = cf_loader(loader) {
+
+    // Many projects are simply never tagged with a game version or a mod
+    // loader, so a strict filter silently hides them. Search progressively:
+    // strict -> drop loader -> drop both. The first non-empty answer wins.
+    let attempts: Vec<(&str, &str)> = if kind_ignores_loader(kind) {
+        vec![(mc_version, ""), ("", "")]
+    } else {
+        match (mc_version.is_empty(), loader.is_empty()) {
+            (false, false) => vec![(mc_version, loader), (mc_version, ""), ("", "")],
+            (false, true) => vec![(mc_version, ""), ("", "")],
+            _ => vec![("", "")],
+        }
+    };
+
+    let mut last_err: Option<String> = None;
+    for (version, ld) in attempts {
+        let mut q: Vec<(&str, String)> = vec![
+            ("gameId", "432".into()),
+            ("classId", cf_class(kind).to_string()),
+            ("searchFilter", query.to_string()),
+            ("sortField", "2".into()), // popularity
+            ("sortOrder", "desc".into()),
+            ("pageSize", "24".into()),
+            ("index", offset.to_string()),
+        ];
+        if !version.is_empty() {
+            q.push(("gameVersion", version.to_string()));
+        }
+        if let Some(l) = cf_loader(ld) {
             q.push(("modLoaderType", l.to_string()));
         }
+        match cf_get(http, &format!("{CURSEFORGE}/mods/search"), &q).await {
+            Ok(resp) => {
+                let total = resp
+                    .get("pagination")
+                    .and_then(|p| p.get("totalCount"))
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(0);
+                let hits = parse_cf_hits(&resp);
+                if !hits.is_empty() || offset > 0 || version.is_empty() && ld.is_empty() {
+                    return Ok((hits, total));
+                }
+                // Genuinely zero results even relaxed — keep trying stricter
+                // relaxations only while there are filters left to drop.
+            }
+            Err(e) => last_err = Some(e),
+        }
     }
-    let resp: Value = http
-        .get(format!("{CURSEFORGE}/mods/search"))
-        .header("x-api-key", CF_KEY)
-        .query(&q)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
+    match last_err {
+        Some(e) => Err(e),
+        None => Ok((vec![], 0)),
+    }
+}
 
-    let total = resp
-        .get("pagination")
-        .and_then(|p| p.get("totalCount"))
-        .and_then(|x| x.as_u64())
-        .unwrap_or(0);
-    let hits = resp
-        .get("data")
+fn parse_cf_hits(resp: &Value) -> Vec<ContentHit> {
+    resp.get("data")
         .and_then(|x| x.as_array())
         .cloned()
         .unwrap_or_default()
@@ -252,8 +341,7 @@ async fn cf_search(
                 .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
                 .unwrap_or_default(),
         })
-        .collect();
-    Ok((hits, total))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -275,11 +363,7 @@ pub async fn install_content(
         _ => mr_resolve(http, project_id, mc_version, loader).await?,
     };
 
-    let dir = if kind == "mod" {
-        space_mods_dir(root, space_id)
-    } else {
-        space_dir(root, space_id).join(kind_folder(kind))
-    };
+    let dir = content_dir(root, space_id, kind, None);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let dest = dir.join(&filename);
     let task = crate::download::DownloadTask {
@@ -298,6 +382,7 @@ pub async fn install_content(
         version_number,
         file_name: filename,
         kind: kind.to_string(),
+        world: None,
     })
 }
 
@@ -614,13 +699,8 @@ async fn cf_resolve(
     Ok((title, icon_url, version_number, filename, url, sha1, size))
 }
 
-pub fn remove_content_file(root: &PathBuf, space_id: &str, kind: &str, file_name: &str) -> Result<(), String> {
-    let dir = if kind == "mod" {
-        space_mods_dir(root, space_id)
-    } else {
-        space_dir(root, space_id).join(kind_folder(kind))
-    };
-    let p = dir.join(file_name);
+pub fn remove_content_file(root: &PathBuf, space_id: &str, kind: &str, world: Option<&str>, file_name: &str) -> Result<(), String> {
+    let p = content_dir(root, space_id, kind, world).join(file_name);
     if p.exists() {
         std::fs::remove_file(p).map_err(|e| e.to_string())?;
     }
@@ -628,12 +708,7 @@ pub fn remove_content_file(root: &PathBuf, space_id: &str, kind: &str, file_name
 }
 
 /// Metadata counts as installed only while its file exists in the Space.
-pub fn content_file_exists(root: &PathBuf, space_id: &str, kind: &str, file_name: &str) -> bool {
+pub fn content_file_exists(root: &PathBuf, space_id: &str, kind: &str, world: Option<&str>, file_name: &str) -> bool {
     if file_name.trim().is_empty() { return false; }
-    let dir = if kind == "mod" {
-        space_mods_dir(root, space_id)
-    } else {
-        space_dir(root, space_id).join(kind_folder(kind))
-    };
-    dir.join(file_name).is_file()
+    content_dir(root, space_id, kind, world).join(file_name).is_file()
 }
