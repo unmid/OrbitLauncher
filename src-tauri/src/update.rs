@@ -1,4 +1,4 @@
-//! One-click updates straight from GitHub Releases on unmid/Orbit-Launcher.
+//! One-click updates straight from GitHub Releases on unmid/OrbitLauncher.
 
 use crate::remote::RELEASES_REPO;
 use serde::Serialize;
@@ -51,7 +51,7 @@ pub async fn check(http: &reqwest::Client, current: &str) -> Result<UpdateInfo, 
         ))
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
-        .header("User-Agent", "Orbit-Launcher");
+        .header("User-Agent", "OrbitLauncher");
     if !crate::remote::UPDATER_TOKEN.is_empty() {
         req = req.header(
             "Authorization",

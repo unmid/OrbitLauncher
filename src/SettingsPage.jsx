@@ -393,7 +393,7 @@ function UpdatesTab({ notify }) {
             <div className="toggle-sub">{info.error}</div>
             <div className="confirm-actions update-actions">
               <button className="btn btn-primary" onClick={check}>Try again</button>
-              <button className="btn btn-secondary" onClick={() => api.openUrl('https://github.com/unmid/Orbit-Launcher/releases')}>
+              <button className="btn btn-secondary" onClick={() => api.openUrl('https://github.com/unmid/OrbitLauncher/releases')}>
                 <IconExternal size={14} /> Releases page
               </button>
             </div>
@@ -454,7 +454,7 @@ function UpdatesTab({ notify }) {
         <div className="settings-card-title">
           <img src="./icons/logo.png" width="20" height="20" alt="" draggable={false} /> About Orbit Launcher
         </div>
-        <div className="toggle-sub">Orbit Launcher v1.0.1 · built for fast, one-click modded Minecraft.</div>
+        <div className="toggle-sub">Orbit Launcher v1.0.2 · built for fast, one-click modded Minecraft.</div>
         <div className="fork-note">
           <IconInfo size={14} />
           <span>
@@ -467,7 +467,7 @@ function UpdatesTab({ notify }) {
           <button className="btn btn-secondary btn-small" onClick={() => api.openUrl('https://github.com/CesarGarza55/OpenLauncher')}>
             <IconGithub size={14} /> Upstream project
           </button>
-          <button className="btn btn-secondary btn-small" onClick={() => api.openUrl('https://github.com/unmid/Orbit-Launcher')}>
+          <button className="btn btn-secondary btn-small" onClick={() => api.openUrl('https://github.com/unmid/OrbitLauncher')}>
             <IconExternal size={14} /> Orbit on GitHub
           </button>
           <button className="btn btn-secondary btn-small" onClick={() => api.openUrl('https://discord.gg/Z7QfWSPJmJ')}>

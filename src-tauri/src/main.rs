@@ -8,6 +8,7 @@ mod hardware;
 mod jruntime;
 mod launch;
 mod loaders;
+mod icongen;
 mod modpack;
 mod mojang;
 mod profile;
@@ -194,20 +195,23 @@ fn pin_space_shortcut(state: State<AppState>, space_id: String) -> Result<String
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let lnk = shortcut_path(&space.name)?;
     let work = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    // The shortcut carries the same icon the Space shows inside the app.
+    let icon = icongen::write_space_ico(&state.root, &space.id, &space.icon)
+        .unwrap_or_else(|_| exe.clone());
     let ps = format!(
         "$ws = New-Object -ComObject WScript.Shell; \
          $sc = $ws.CreateShortcut('{}'); \
          $sc.TargetPath = '{}'; \
          $sc.Arguments = '--space {}'; \
          $sc.WorkingDirectory = '{}'; \
-         $sc.IconLocation = '{},0'; \
+         $sc.IconLocation = '{}'; \
          $sc.Description = 'Play {} in Orbit Launcher'; \
          $sc.Save()",
         lnk.display(),
         exe.display(),
         space.id,
         work.display(),
-        exe.display(),
+        icon.display(),
         space.name.replace('\'', "''"),
     );
     let status = std::process::Command::new("powershell")
@@ -228,6 +232,7 @@ fn unpin_space_shortcut(state: State<AppState>, space_id: String) -> Result<(), 
     if lnk.exists() {
         std::fs::remove_file(&lnk).map_err(|e| e.to_string())?;
     }
+    icongen::remove_space_ico(&state.root, &space.id);
     Ok(())
 }
 

@@ -16,7 +16,7 @@ pub const CF_KEY: &str = match option_env!("ORBIT_CF_KEY") {
 
 pub const REPO_BASE: &str = "https://api.github.com/repos/unmid/OL-updater/contents";
 pub const RAW_BASE: &str = "https://raw.githubusercontent.com/unmid/OL-updater/main";
-pub const RELEASES_REPO: &str = "unmid/Orbit-Launcher";
+pub const RELEASES_REPO: &str = "unmid/OrbitLauncher";
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -34,7 +34,7 @@ async fn try_get(http: &reqwest::Client, url: &str, token: bool) -> Result<Strin
         .get(url)
         .header("Accept", "application/vnd.github.raw+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
-        .header("User-Agent", "Orbit-Launcher");
+        .header("User-Agent", "OrbitLauncher");
     if token && !UPDATER_TOKEN.is_empty() {
         req = req.header("Authorization", format!("Bearer {UPDATER_TOKEN}"));
     }
