@@ -227,7 +227,12 @@ export const IconGamepad = (p) => (
   </g></S>
 )
 export const IconBrush = (p) => (
-  <S {...p}><g stroke="var(--line)" strokeWidth="1.8" strokeLinejoin="round"><path d="M14 3l7 7-9.5 2.5a2.6 2.6 0 0 1-1.9-.66c-.66-.66-.84-1.63-.52-2.47z" fill="var(--violet)" /><path d="M7 13c-2.5.8-4 2.8-4 6 1.8.8 4 .3 5.2-1S9.6 14.4 7 13z" fill="var(--pink)" /></g></S>
+  <S {...p}><g stroke="var(--line)" strokeWidth="1.6" strokeLinejoin="round">
+    <path d="M14 3l7 7-9.5 2.5a2.6 2.6 0 0 1-1.9-.66c-.66-.66-.84-1.63-.52-2.47z" fill="var(--violet)" />
+    <path d="M15.6 4.8l3.8 3.8" fill="none" stroke="#fff" strokeWidth="1.2" opacity=".4" />
+    <path d="M7 13c-2.5.8-4 2.8-4 6 1.8.8 4 .3 5.2-1S9.6 14.4 7 13z" fill="var(--pink)" />
+    <path d="M5.2 16.8c.9.4 1.8.3 2.6-.2" fill="none" stroke="var(--line)" strokeWidth="1" opacity=".6" />
+  </g></S>
 )
 export const IconCape = (p) => (
   <S {...p}><g stroke="var(--line)" strokeWidth="1.7" strokeLinejoin="round">
@@ -277,7 +282,11 @@ export const IconOs = (p) => (
   </g></S>
 )
 export const IconSparkle = (p) => (
-  <S {...p}><path d="M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2-5.6-3.2L6.4 20l1.3-6.2L3 9.5l6.3-.7z" fill="var(--yellow)" stroke="var(--line)" strokeWidth="1.7" strokeLinejoin="round" /></S>
+  <S {...p}><g stroke="var(--line)" strokeWidth="1.6" strokeLinejoin="round">
+    <path d="M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2-5.6-3.2L6.4 20l1.3-6.2L3 9.5l6.3-.7z" fill="var(--yellow)" />
+    <path d="M12 6.2l1.8 3.9 4.3.5" fill="none" stroke="#fff" strokeWidth="1.2" opacity=".4" strokeLinecap="round" />
+    <path d="M17.5 2.5l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z" fill="var(--yellow)" strokeWidth="1" />
+  </g></S>
 )
 export const IconStar = IconSparkle
 export const IconDisk = (p) => (
@@ -296,7 +305,13 @@ export const IconRefresh = (p) => (
   <S {...p}><g stroke="var(--line)" strokeWidth="2" strokeLinecap="round" fill="none"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" /><path d="M19.8 3.5v3.7h-3.7" /></g></S>
 )
 export const IconCube = (p) => (
-  <S {...p}><g stroke="var(--line)" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="var(--violet)" /><path d="M12 3l8 4.5-8 4.5-8-4.5z" fill="var(--pink)" /><path d="M12 12v9" fill="none" /></g></S>
+  <S {...p}><g stroke="var(--line)" strokeWidth="1.7" strokeLinejoin="round">
+    <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="var(--violet)" />
+    <path d="M12 3l8 4.5-8 4.5-8-4.5z" fill="var(--pink)" />
+    <path d="M12 12v9" fill="none" />
+    <path d="M12 12l8-4.5M12 12L4 7.5" fill="none" strokeWidth="1.1" opacity=".55" />
+    <path d="M12 4.2l6.8 3.8" fill="none" stroke="#fff" strokeWidth="1.1" opacity=".35" />
+  </g></S>
 )
 export const IconPlayers = (p) => (
   <S {...p}><g stroke="var(--line)" strokeWidth="1.7">
@@ -316,7 +331,15 @@ export const IconWarn = (p) => (
   <S {...p}><g stroke="var(--line)" strokeWidth="1.7"><path d="M12 3.5L22 20H2z" fill="var(--yellow)" strokeLinejoin="round" /><path d="M12 9.5v4.5" fill="none" strokeWidth="2.2" strokeLinecap="round" /><circle cx="12" cy="17" r="1.2" fill="var(--line)" stroke="none" /></g></S>
 )
 export const IconRocket = (p) => (
-  <S {...p}><g stroke="var(--line)" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 2c3.2 2 5 6 5 10l-2.6 3h-4.8L7 12c0-4 1.8-8 5-10z" fill="var(--orange)" /><circle cx="12" cy="10" r="2" fill="var(--card)" /><path d="M7.5 13L5 17l3.4-1M16.5 13L19 17l-3.4-1" fill="var(--yellow)" /><path d="M10.4 17.5L12 22l1.6-4.5" fill="var(--yellow)" /></g></S>
+  <S {...p}><g stroke="var(--line)" strokeWidth="1.6" strokeLinejoin="round">
+    <path d="M12 2c3.2 2 5 6 5 10l-2.6 3h-4.8L7 12c0-4 1.8-8 5-10z" fill="var(--orange)" />
+    <path d="M12 2c1.4.9 2.6 2.4 3.4 4.4L9.9 5.4C10.6 4 11.2 2.9 12 2z" fill="#fff" opacity=".25" stroke="none" />
+    <circle cx="12" cy="10" r="2.3" fill="var(--card)" />
+    <circle cx="12" cy="10" r="1" fill="var(--blue)" stroke="none" />
+    <path d="M7.5 13L5 17l3.4-1M16.5 13L19 17l-3.4-1" fill="var(--yellow)" />
+    <path d="M10.4 17.5L12 22l1.6-4.5" fill="var(--yellow)" />
+    <path d="M11.2 17.9L12 20l.8-2.1" fill="var(--orange)" stroke="none" />
+  </g></S>
 )
 export const IconSun = (p) => (
   <S {...p}><g stroke="var(--line)" strokeWidth="1.7" strokeLinecap="round">

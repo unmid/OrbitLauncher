@@ -36,6 +36,10 @@ pub struct ContentDetails {
     pub icon_url: String,
     pub source: String,
     pub game_versions: Vec<String>,
+    #[serde(default)]
+    pub loaders: Vec<String>,
+    #[serde(default)]
+    pub categories: Vec<String>,
 }
 
 /// mod | resourcepack | shader | datapack
@@ -583,7 +587,33 @@ pub async fn content_details(
         .and_then(|x| x.as_array())
         .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
         .unwrap_or_default();
-    Ok(ContentDetails { project_id: project_id.to_string(), title, description, body, author, downloads, icon_url, source: source.to_string(), game_versions })
+    // Modrinth exposes loaders/categories arrays directly; CurseForge only
+    // carries loader ids on latestFilesIndexes (0 Any, 1 Forge, 2 Cauldron,
+    // 3 LiteLoader, 4 Fabric, 5 Quilt, 6 NeoForge).
+    let mut loaders: Vec<String> = data
+        .get("loaders")
+        .and_then(|x| x.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    if loaders.is_empty() {
+        if let Some(indexes) = data.get("latestFilesIndexes").and_then(|x| x.as_array()) {
+            let mut found: Vec<String> = indexes
+                .iter()
+                .filter_map(|v| v.get("modLoader").and_then(|m| m.as_u64()))
+                .filter_map(|id| match id { 1 => Some("forge"), 4 => Some("fabric"), 5 => Some("quilt"), 6 => Some("neoforge"), _ => None })
+                .map(str::to_string)
+                .collect();
+            found.sort();
+            found.dedup();
+            loaders = found;
+        }
+    }
+    let categories: Vec<String> = data
+        .get("categories")
+        .and_then(|x| x.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).take(6).collect())
+        .unwrap_or_default();
+    Ok(ContentDetails { project_id: project_id.to_string(), title, description, body, author, downloads, icon_url, source: source.to_string(), game_versions, loaders, categories })
 }
 
 async fn cf_resolve(

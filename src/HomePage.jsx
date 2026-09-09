@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, openFileDialog } from './api.js'
 import {
   IconRocket, IconPlay, IconGlobe, IconShield, IconClock, IconBolt, IconLayers,
-  AppIcon, SpaceIcon, LOADER_META, LoaderMark, IconNews, IconDiscord,
+  AppIcon, SpaceIcon, LOADER_META, LoaderMark, IconNews, IconDiscord, IconCheck, IconPlus,
 } from './icons.jsx'
 import { progressDetail, stageText } from './App.jsx'
 
 const DISCORD_URL = 'https://discord.gg/Z7QfWSPJmJ'
-const RELEASENOTES_URL = 'https://github.com/unmid/Orbit-Launcher/releases'
+const RELEASENOTES_URL = 'https://github.com/unmid/OrbitLauncher/releases'
 const WALLPAPERS = ['./wallpapers/w1.png', './wallpapers/w2.png', './wallpapers/w3.png', './wallpapers/w4.png']
 const WALLPAPER_INTERVAL = 32000
 const BUSY_STAGES = ['loader', 'version', 'files', 'java', 'launching']
@@ -36,6 +36,88 @@ function HomeBackground({ enabled }) {
         <div key={src} className={`home-bg-img ${i === index ? 'show' : ''}`} style={{ backgroundImage: `url(${src})` }} />
       ))}
       <div className="home-bg-scrim" />
+    </div>
+  )
+}
+
+/* Drop-up game picker anchored above the dock. */
+function SpacePicker({ spaces, selectedSpace, onSelect, onNew }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const Mark = selectedSpace ? (LoaderMark[selectedSpace.loader] || LoaderMark.vanilla) : null
+  const meta = selectedSpace ? (LOADER_META[selectedSpace.loader] || LOADER_META.vanilla) : null
+
+  return (
+    <div className="dock-pop-wrap" ref={wrapRef}>
+      <button
+        className="dock-select"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        style={{ '--space-color': selectedSpace?.color || 'var(--accent)' }}
+      >
+        {selectedSpace ? (
+          <>
+            <span className="dock-select-icon"><SpaceIcon name={selectedSpace.icon} size={26} /></span>
+            <span className="dock-select-text">
+              <span className="dock-select-name">{selectedSpace.name}</span>
+              <span className="dock-select-meta">
+                {Mark && <Mark size={11} />} {meta.label}{selectedSpace.loaderVersion ? ` ${selectedSpace.loaderVersion}` : ''} · Minecraft {selectedSpace.mcVersion}
+              </span>
+            </span>
+          </>
+        ) : (
+          <span className="dock-select-text">
+            <span className="dock-select-name">Select a game</span>
+            <span className="dock-select-meta">Pick one of your Spaces</span>
+          </span>
+        )}
+        <svg className="dock-select-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={open ? { transform: 'rotate(180deg)' } : undefined}>
+          <path d="m6 15 6-6 6 6" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="dock-pop" role="listbox" aria-label="Your Spaces">
+          {spaces.map((space) => {
+            const M = LoaderMark[space.loader] || LoaderMark.vanilla
+            return (
+              <button
+                key={space.id}
+                role="option"
+                aria-selected={selectedSpace?.id === space.id}
+                className={`dock-pop-row ${selectedSpace?.id === space.id ? 'selected' : ''}`}
+                onClick={() => { onSelect(space.id); setOpen(false) }}
+              >
+                <span className="dock-pop-icon" style={{ '--c': space.color }}><SpaceIcon name={space.icon} size={20} /></span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span className="dock-pop-name">{space.name}</span>
+                  <span className="dock-pop-meta"><M size={10} /> {LOADER_META[space.loader]?.label || space.loader} · {space.mcVersion}</span>
+                </span>
+                {selectedSpace?.id === space.id && <span className="version-row-check"><IconCheck size={15} /></span>}
+              </button>
+            )
+          })}
+          <div className="dock-pop-sep" />
+          <button className="dock-pop-row dock-pop-new" onClick={() => { setOpen(false); onNew() }}>
+            <span className="dock-pop-icon"><IconPlus size={16} /></span>
+            <span className="dock-pop-name">New Space…</span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -75,20 +157,12 @@ export default function HomePage({ settings, spaces, selectedSpace, activeAccoun
   const recent = useMemo(() => spaces
     .slice()
     .sort((a, b) => (b.lastPlayed || b.createdAt || 0) - (a.lastPlayed || a.createdAt || 0))
-    .slice(0, 4), [spaces])
+    .slice(0, 8), [spaces])
 
   const heroProgress = selectedSpace ? progress[selectedSpace.id] : null
   const busy = heroProgress && BUSY_STAGES.includes(heroProgress.stage)
   const started = heroProgress?.stage === 'running'
   const pct = heroProgress && heroProgress.total ? Math.min(100, Math.round((heroProgress.done / heroProgress.total) * 100)) : null
-
-  const loaderMeta = selectedSpace ? (LOADER_META[selectedSpace.loader] || LOADER_META.vanilla) : null
-  const HeroMark = selectedSpace ? (LoaderMark[selectedSpace.loader] || LoaderMark.vanilla) : null
-  const counts = useMemo(() => {
-    const c = { mod: 0, resourcepack: 0, shader: 0 }
-    for (const m of selectedSpace?.mods || []) c[m.kind] = (c[m.kind] || 0) + 1
-    return c
-  }, [selectedSpace])
 
   return (
     <div className="page-full">
@@ -104,90 +178,33 @@ export default function HomePage({ settings, spaces, selectedSpace, activeAccoun
           </p>
         </div>
 
-        <div className="home-grid">
-          <section className="home-hero">
-            <div className="hero-card" style={{ '--space-color': selectedSpace?.color || 'var(--accent)' }}>
-              <div className="hero-card-glow" />
-              {selectedSpace ? (
-                <>
-                  <div className="hero-space-row">
-                    <span className="hero-space-icon"><SpaceIcon name={selectedSpace.icon} size={38} /></span>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="hero-space-name">{selectedSpace.name}</div>
-                      <div className="hero-space-meta">
-                        <span className="tag tag-loader"><HeroMark size={12} /> {loaderMeta.label}{selectedSpace.loaderVersion ? ` ${selectedSpace.loaderVersion}` : ''}</span>
-                        <span className="tag">{selectedSpace.mcVersion}</span>
-                        {counts.mod > 0 && <span className="tag">{counts.mod} mod{counts.mod > 1 ? 's' : ''}</span>}
-                        {counts.resourcepack > 0 && <span className="tag">{counts.resourcepack} pack{counts.resourcepack > 1 ? 's' : ''}</span>}
-                        {counts.shader > 0 && <span className="tag">{counts.shader} shader{counts.shader > 1 ? 's' : ''}</span>}
-                      </div>
-                    </div>
-                    {spaces.length > 1 && (
-                      <button className="btn btn-secondary btn-small hero-space-switch" onClick={() => navigate('library')}>
-                        <IconLayers size={14} /> Switch
-                      </button>
-                    )}
-                  </div>
-
-                  <button
-                    className={`hero-play ${started ? 'hero-play-success' : ''}`}
-                    disabled={busy || started}
-                    onClick={() => play(selectedSpace)}
-                  >
-                    {busy || started ? (
-                      <div className="hero-progress" role="status" aria-live="polite">
-                        <div className="hero-progress-row">
-                          <span>{stageText(heroProgress)}</span>
-                          {pct != null && <span className="hero-progress-pct">{pct}%</span>}
-                        </div>
-                        <div className="hero-progress-bar">
-                          <div className="hero-progress-fill" style={started ? { width: '100%' } : (pct != null ? { width: pct + '%' } : undefined)} data-ind={started || pct != null ? '0' : '1'} />
-                        </div>
-                        <div className="hero-progress-sub">{progressDetail(heroProgress)}</div>
-                      </div>
-                    ) : (
-                      <><IconPlay size={22} /><span>PLAY</span></>
-                    )}
-                  </button>
-                </>
-              ) : (
-                <div className="hero-empty">
-                  <div className="hero-empty-icon"><IconRocket size={34} /></div>
-                  <h2>Set up your first Space</h2>
-                  <p>Pick a Minecraft version, choose a loader if you want mods, and press Play. It takes about a minute.</p>
-                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                    <button className="btn btn-primary btn-big" onClick={() => openWizard('new')}>
-                      <IconRocket size={17} /> New Space
-                    </button>
-                    <button className="btn btn-secondary btn-big" onClick={importModpack} disabled={packBusy}>
-                      {packBusy ? <span className="mini-spinner" /> : <AppIcon name="download" size={17} />} From modpack…
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {update && (
-              <div className="update-banner" role="status">
-                <AppIcon name="update-available" size={18} />
-                <span>Orbit v{update.latest} is out — you're on v{update.current}</span>
-                <button className="btn btn-primary btn-small" onClick={() => navigate('settings:updates')}>
-                  Review update
+        {spaces.length === 0 ? (
+          <section className="hero-card" style={{ maxWidth: 560, margin: '26px auto 0', width: '100%' }}>
+            <div className="hero-empty">
+              <div className="hero-empty-icon"><IconRocket size={34} /></div>
+              <h2>Set up your first Space</h2>
+              <p>Pick a Minecraft version, choose a loader if you want mods, and press Play. It takes about a minute.</p>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button className="btn btn-primary btn-big" onClick={() => openWizard('new')}>
+                  <IconRocket size={17} /> New Space
+                </button>
+                <button className="btn btn-secondary btn-big" onClick={importModpack} disabled={packBusy}>
+                  {packBusy ? <span className="mini-spinner" /> : <AppIcon name="download" size={17} />} From modpack…
                 </button>
               </div>
-            )}
+            </div>
           </section>
-
-          <div className="home-side">
+        ) : (
+          <>
             {recent.length > 0 && (
               <section>
                 <h2 className="home-section-title">
                   <IconClock size={15} /> Jump back in
-                  {spaces.length > 4 && (
+                  {spaces.length > 8 && (
                     <button className="home-section-link" onClick={() => navigate('library')}>All Spaces →</button>
                   )}
                 </h2>
-                <div className="recent-list">
+                <div className="recent-grid">
                   {recent.map((space) => {
                     const tileBusy = progress[space.id] && BUSY_STAGES.includes(progress[space.id].stage)
                     const Mark = LoaderMark[space.loader] || LoaderMark.vanilla
@@ -222,7 +239,7 @@ export default function HomePage({ settings, spaces, selectedSpace, activeAccoun
               </section>
             )}
 
-            <section>
+            <section style={{ marginTop: 18 }}>
               <h2 className="home-section-title"><IconBolt size={15} /> Quick actions</h2>
               <div className="quick-grid">
                 <button className="quick-tile" onClick={() => openWizard('new')}>
@@ -241,12 +258,6 @@ export default function HomePage({ settings, spaces, selectedSpace, activeAccoun
                   <span className="quick-tile-ic"><AppIcon name="tune" size={16} /></span>
                   Customize Orbit
                 </button>
-              </div>
-            </section>
-
-            <section>
-              <h2 className="home-section-title"><IconGlobe size={15} /> Around Orbit</h2>
-              <div className="quick-grid">
                 <button className="quick-tile" onClick={() => api.openUrl(DISCORD_URL)} title="Community, support and sneak peeks">
                   <span className="quick-tile-ic"><IconDiscord size={15} /></span>
                   Discord
@@ -263,7 +274,52 @@ export default function HomePage({ settings, spaces, selectedSpace, activeAccoun
                 </span>
               </div>
             </section>
-          </div>
+
+            {update && (
+              <div className="update-banner" role="status" style={{ marginTop: 18 }}>
+                <AppIcon name="update-available" size={18} />
+                <span>Orbit v{update.latest} is out — you're on v{update.current}</span>
+                <button className="btn btn-primary btn-small" onClick={() => navigate('settings:updates')}>
+                  Review update
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* bottom dock: drop-up game picker + play */}
+        <div className="home-dock">
+          {spaces.length > 0 ? (
+            <>
+              <SpacePicker spaces={spaces} selectedSpace={selectedSpace} onSelect={selectSpace} onNew={() => openWizard('new')} />
+              <button
+                className={`dock-play ${started ? 'running' : ''}`}
+                disabled={!selectedSpace || busy || started}
+                onClick={() => selectedSpace && play(selectedSpace)}
+              >
+                {busy || started ? (
+                  <div className="hero-progress" role="status" aria-live="polite">
+                    <div className="hero-progress-row">
+                      <span>{stageText(heroProgress)}</span>
+                      {pct != null && <span className="hero-progress-pct">{pct}%</span>}
+                    </div>
+                    <div className="hero-progress-bar">
+                      <div className="hero-progress-fill" style={started ? { width: '100%' } : (pct != null ? { width: pct + '%' } : undefined)} data-ind={started || pct != null ? '0' : '1'} />
+                    </div>
+                  </div>
+                ) : (
+                  <><IconPlay size={20} /><span>PLAY</span></>
+                )}
+              </button>
+            </>
+          ) : (
+            <button className="dock-select" onClick={() => openWizard('new')} style={{ justifyContent: 'center', padding: 14 }}>
+              <span className="dock-select-text" style={{ alignItems: 'center' }}>
+                <span className="dock-select-name">Create your first Space</span>
+                <span className="dock-select-meta">One minute setup — version, loader, done</span>
+              </span>
+            </button>
+          )}
         </div>
       </div>
     </div>

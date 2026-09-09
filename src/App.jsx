@@ -157,6 +157,24 @@ export default function App() {
     return () => { cancelled = true }
   }, [ready]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Desktop shortcuts (`Orbit - <name>.lnk`) start the app with `--space <id>`:
+  // select that Space and launch it immediately, skipping manual selection.
+  const autoLaunchRef = useRef(false)
+  useEffect(() => {
+    if (!ready || !DESKTOP_RUNTIME || autoLaunchRef.current) return
+    autoLaunchRef.current = true
+    api.launchArgs().then((args) => {
+      const i = args.indexOf('--space')
+      const id = i >= 0 ? args[i + 1] : null
+      if (!id) return
+      const space = spaces.find((s) => s.id === id)
+      if (space) {
+        selectSpace(id)
+        play(space)
+      }
+    }).catch(() => {})
+  }, [ready]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- theming -----------------------------------------------------------
   useEffect(() => {
     if (!settings) return

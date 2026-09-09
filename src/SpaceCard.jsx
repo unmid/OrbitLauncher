@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { LOADER_META, LoaderMark, SpaceIcon, IconPlay, IconEdit, IconCopy, IconFolder, IconClock, IconShare, IconMore, IconWarn, AppIcon } from './icons.jsx'
+import { LOADER_META, LoaderMark, SpaceIcon, IconPlay, IconEdit, IconCopy, IconFolder, IconClock, IconShare, IconMore, IconWarn, IconExternal, AppIcon } from './icons.jsx'
 import { api, saveFileDialog } from './api.js'
 import { progressDetail } from './App.jsx'
 
@@ -72,6 +72,16 @@ export default function SpaceCard({ space, progress, onPlay, onEdit, onChanged, 
     try { await api.openSpaceFolder(space.id) } catch (e) { notify(String(e), 'error') }
   }
 
+  const pinToDesktop = async () => {
+    setMenuOpen(false)
+    try {
+      await api.pinSpaceShortcut(space.id)
+      notify(`Pinned to Desktop — double-click “Orbit - ${space.name}” to launch straight into the game`)
+    } catch (e) {
+      notify(String(e), 'error')
+    }
+  }
+
   const doDelete = async () => {
     setConfirmDelete(false)
     try {
@@ -101,6 +111,7 @@ export default function SpaceCard({ space, progress, onPlay, onEdit, onChanged, 
         {menuOpen && (
           <div className="space-menu" onMouseDown={(e) => e.preventDefault()}>
             <button onClick={() => { setMenuOpen(false); onEdit(space) }}><IconEdit size={15} /> Edit</button>
+            <button onClick={pinToDesktop}><IconExternal size={15} /> Pin to Desktop</button>
             <button onClick={duplicate}><IconCopy size={15} /> Duplicate</button>
             <button onClick={exportSpace}><IconShare size={15} /> Export</button>
             <button onClick={openFolder}><IconFolder size={15} /> Open folder</button>

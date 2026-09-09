@@ -170,6 +170,73 @@ fn update_space(state: State<AppState>, space: spaces::Space) -> Result<spaces::
     Ok(next)
 }
 
+// ---------------------------------------------------------------------------
+// desktop shortcuts: pin a Space so it can be launched straight from the
+// desktop. The shortcut runs the app with `--space <id>`; the frontend reads
+// launch_args on startup and plays that Space immediately.
+
+fn shortcut_path(space_name: &str) -> Result<std::path::PathBuf, String> {
+    let desktop = dirs::desktop_dir().ok_or("Couldn't find the Desktop folder")?;
+    let safe: String = space_name
+        .chars()
+        .map(|c| if r#"\/:*?"<>|"#.contains(c) { ' ' } else { c })
+        .collect::<String>()
+        .trim()
+        .to_string();
+    let safe = if safe.is_empty() { "Space".to_string() } else { safe };
+    Ok(desktop.join(format!("Orbit - {safe}.lnk")))
+}
+
+#[tauri::command]
+fn pin_space_shortcut(state: State<AppState>, space_id: String) -> Result<String, String> {
+    let all = state.spaces();
+    let space = all.iter().find(|s| s.id == space_id).ok_or("Space not found")?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let lnk = shortcut_path(&space.name)?;
+    let work = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let ps = format!(
+        "$ws = New-Object -ComObject WScript.Shell; \
+         $sc = $ws.CreateShortcut('{}'); \
+         $sc.TargetPath = '{}'; \
+         $sc.Arguments = '--space {}'; \
+         $sc.WorkingDirectory = '{}'; \
+         $sc.IconLocation = '{},0'; \
+         $sc.Description = 'Play {} in Orbit Launcher'; \
+         $sc.Save()",
+        lnk.display(),
+        exe.display(),
+        space.id,
+        work.display(),
+        exe.display(),
+        space.name.replace('\'', "''"),
+    );
+    let status = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &ps])
+        .status()
+        .map_err(|e| e.to_string())?;
+    if !status.success() {
+        return Err("Couldn't create the shortcut".into());
+    }
+    Ok(lnk.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn unpin_space_shortcut(state: State<AppState>, space_id: String) -> Result<(), String> {
+    let all = state.spaces();
+    let space = all.iter().find(|s| s.id == space_id).ok_or("Space not found")?;
+    let lnk = shortcut_path(&space.name)?;
+    if lnk.exists() {
+        std::fs::remove_file(&lnk).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Arguments the app was started with (used for `--space <id>` desktop shortcuts).
+#[tauri::command]
+fn launch_args() -> Vec<String> {
+    std::env::args().skip(1).collect()
+}
+
 #[tauri::command]
 fn duplicate_space(state: State<AppState>, space_id: String) -> Result<spaces::Space, String> {
     spaces::duplicate_space(&state.root, &space_id)
@@ -1362,6 +1429,9 @@ fn main() {
             get_settings,
             save_settings,
             list_game_versions,
+            pin_space_shortcut,
+            unpin_space_shortcut,
+            launch_args,
             list_loader_versions,
             list_installed_versions,
             list_spaces,

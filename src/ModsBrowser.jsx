@@ -76,6 +76,7 @@ export default function ModsBrowser({ mcVersion, loader, spacesModList = [], onP
   const [busyId, setBusyId] = useState(null)
   const [details, setDetails] = useState(null)
   const [detailsBusy, setDetailsBusy] = useState(false)
+  const [detailsError, setDetailsError] = useState(null)
   const [directMods, setDirectMods] = useState(spacesModList)
   // datapack install target picker: {hit, worlds} | null
   const [datapackPick, setDatapackPick] = useState(null)
@@ -124,6 +125,8 @@ export default function ModsBrowser({ mcVersion, loader, spacesModList = [], onP
   const activeMods = directSpaceId ? directMods : spacesModList
   const detailsMarkup = useMemo(() => renderDescription(details?.body || details?.description), [details])
   const detailsVersions = details?.gameVersions || details?.game_versions || []
+  const detailsLoaders = details?.loaders || []
+  const detailsCategories = details?.categories || []
   const detailsIcon = details?.iconUrl || details?.icon_url || ''
   const isPackKind = kind === 'modpack'
   const detailsUnsupported =
@@ -261,10 +264,11 @@ export default function ModsBrowser({ mcVersion, loader, spacesModList = [], onP
   const openDetails = async (hit) => {
     setDetails({ ...hit, body: hit.description || '' })
     setDetailsBusy(true)
+    setDetailsError(null)
     try {
       setDetails(await api.getContentDetails({ source, projectId: hit.projectId }))
     } catch (e) {
-      notify?.(`Couldn't load the full description: ${String(e)}`, 'error')
+      setDetailsError(String(e))
     } finally {
       setDetailsBusy(false)
     }
@@ -417,7 +421,7 @@ export default function ModsBrowser({ mcVersion, loader, spacesModList = [], onP
       )}
 
       {details && <div className="modal-backdrop" onClick={() => setDetails(null)}>
-        <div ref={detailsRef} className="content-details" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <div ref={detailsRef} className="content-details" role="dialog" aria-modal="true" aria-label={details.title} onClick={(event) => event.stopPropagation()}>
           <div className="details-head">
             {detailsIcon
               ? <img src={detailsIcon} alt="" className="details-icon" />
@@ -429,28 +433,74 @@ export default function ModsBrowser({ mcVersion, loader, spacesModList = [], onP
                 <span className="details-source">{source === 'modrinth' ? 'Modrinth' : 'CurseForge'}</span>
               </div>
             </div>
-            <button className="icon-btn" onClick={() => setDetails(null)} title="Close"><IconX size={18} /></button>
+            <button className="icon-btn" onClick={() => setDetails(null)} title="Close (Esc)"><IconX size={18} /></button>
           </div>
 
-          <div className="details-meta">
-            <span className="details-pill"><IconDownload size={12} /> {fmtDownloads(details.downloads)} downloads</span>
-            {!isPackKind && (
-              <span className={`details-support ${detailsUnsupported ? 'unsupported' : ''}`}>
-                {detailsUnsupported
-                  ? `No support for Minecraft ${targetVersion}`
-                  : `Supports Minecraft ${targetVersion || 'the selected version'}`}
-              </span>
+          <div className="details-scroll">
+            <div className="details-meta" style={{ padding: '12px 0 2px' }}>
+              <span className="details-pill"><IconDownload size={12} /> {fmtDownloads(details.downloads)} downloads</span>
+              {!isPackKind && (
+                <span className={`details-support ${detailsUnsupported ? 'unsupported' : ''}`}>
+                  {detailsUnsupported
+                    ? `No support for Minecraft ${targetVersion}`
+                    : `Supports Minecraft ${targetVersion || 'the selected version'}`}
+                </span>
+              )}
+            </div>
+
+            {details.description && detailsMarkup !== details.description && (
+              <p style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 13, margin: '10px 0 0' }}>{details.description}</p>
+            )}
+
+            {detailsBusy ? (
+              <div className="details-skel">
+                <div className="skeleton skeleton-line" style={{ width: '92%' }} />
+                <div className="skeleton skeleton-line" style={{ width: '98%' }} />
+                <div className="skeleton skeleton-line" style={{ width: '64%' }} />
+                <div className="skeleton skeleton-line" style={{ width: '85%' }} />
+                <div className="skeleton skeleton-line" style={{ width: '41%' }} />
+              </div>
+            ) : detailsError ? (
+              <div className="details-error">
+                <IconWarn size={26} />
+                <div>Couldn't load the full description.<br /><span style={{ color: 'var(--faint)', fontSize: 12 }}>{detailsError.slice(0, 120)}</span></div>
+                <button className="btn btn-secondary btn-small" onClick={() => openDetails(details)}><IconRefresh size={13} /> Try again</button>
+              </div>
+            ) : (
+              <div className="details-body details-rendered" style={{ padding: '10px 0 0', overflow: 'visible' }} dangerouslySetInnerHTML={{ __html: detailsMarkup || '<p>No description provided.</p>' }} />
+            )}
+
+            {!detailsBusy && detailsLoaders.length > 0 && (
+              <div className="details-section">
+                <div className="details-section-title">Software</div>
+                <div className="details-chips">
+                  {detailsLoaders.map((l) => <span key={l} className="details-chip loader">{l}</span>)}
+                </div>
+              </div>
+            )}
+
+            {!detailsBusy && detailsVersions.length > 0 && (
+              <div className="details-section">
+                <div className="details-section-title">Minecraft versions</div>
+                <div className="details-chips">
+                  {detailsVersions.slice(0, 18).map((v) => <span key={v} className="details-chip">{v}</span>)}
+                  {detailsVersions.length > 18 && <span className="details-chip more">+{detailsVersions.length - 18} more</span>}
+                </div>
+              </div>
+            )}
+
+            {!detailsBusy && detailsCategories.length > 0 && (
+              <div className="details-section">
+                <div className="details-section-title">Categories</div>
+                <div className="details-chips">
+                  {detailsCategories.map((c) => <span key={c} className="details-chip">{c}</span>)}
+                </div>
+              </div>
             )}
           </div>
 
-          {detailsBusy ? (
-            <div className="details-loading"><span className="mini-spinner" /> Loading description…</div>
-          ) : (
-            <div className="details-body details-rendered" dangerouslySetInnerHTML={{ __html: detailsMarkup || '<p>No description provided.</p>' }} />
-          )}
-
           <div className="details-foot">
-            <button className="btn btn-ghost" onClick={() => setDetails(null)}>Close</button>
+            <button className="btn btn-ghost" onClick={() => setDetails(null)}>Back</button>
             {!blocked && (
               <button
                 className={`btn btn-primary ${installedRecord(activeMods, source, details.projectId) && !isPackKind ? 'btn-picked' : ''}`}
